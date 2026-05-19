@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ============================================================
-# BlloseAgent4J — Ubuntu 一键环境搭建 & 启动脚本
+# BlloseAgent4J — Ubuntu 生产环境一键部署脚本
 # ============================================================
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -14,17 +14,17 @@ PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_FILE="$PROJECT_ROOT/src/main/resources/application.yml"
 CONFIG_EXAMPLE="$PROJECT_ROOT/src/main/resources/application-example.yml"
 BACKEND_PID=""
-FRONTEND_PID=""
 
 cleanup() {
-    log_info "正在停止服务..."
+    log_info "正在停止后端..."
     [ -n "${BACKEND_PID:-}" ] && kill "$BACKEND_PID" 2>/dev/null || true
-    [ -n "${FRONTEND_PID:-}" ] && kill "$FRONTEND_PID" 2>/dev/null || true
     log_info "已退出。"
 }
 trap cleanup EXIT INT TERM
 
-# --------------- 1. 系统环境检测 & 自动安装 ---------------
+# ============================================================
+# 1. 系统环境
+# ============================================================
 log_info "========== 检测系统环境 =========="
 
 # Java 17+
@@ -60,7 +60,6 @@ else
     log_info "Node.js $(node --version) 安装完成"
 fi
 
-# npm (通常随 Node.js 安装)
 if ! command -v npm &>/dev/null; then
     log_warn "npm 未找到，正在安装..."
     sudo apt install -y -qq npm
@@ -104,25 +103,7 @@ if ! command -v uvx &>/dev/null; then
 fi
 log_info "uvx $(uvx --version 2>&1 || echo '✓') ✓"
 
-# --------------- 2. 运行模式 ---------------
-echo ""
-echo "=============================================="
-echo "  选择运行模式"
-echo "=============================================="
-echo "  [1] 生产模式 — npm build + Nginx 静态托管 (推荐)"
-echo "  [2] 开发模式 — Vite HMR 热更新开发服务器"
-echo ""
-read -rp "请选择 (1/2, 默认 1): " MODE_CHOICE
-MODE_CHOICE="${MODE_CHOICE:-1}"
-if [ "$MODE_CHOICE" = "2" ]; then
-    RUN_MODE="dev"
-    log_info "运行模式: 开发 (Vite HMR)"
-else
-    RUN_MODE="prod"
-    log_info "运行模式: 生产 (Nginx 静态托管)"
-fi
-
-# PyPI 镜像检测 (国内服务器 PyPI 访问慢/不通)
+# PyPI 镜像检测 (国内服务器)
 UV_CONFIG="$HOME/.config/uv/uv.toml"
 if [ ! -f "$UV_CONFIG" ]; then
     log_info "检测 PyPI 连通性..."
@@ -137,28 +118,26 @@ EOF
     fi
 fi
 
-# 预下载 MiniMax MCP 依赖 (首次较慢，提前缓存避免启动超时)
+# 预下载 MiniMax MCP 依赖
 log_info "预热 MiniMax MCP 依赖 (首次可能需要几分钟)..."
-
-# 从 application.yml 读取 API Key 传入，确保预热即验证
 MM_KEY=$(grep 'MINIMAX_API_KEY:' "$CONFIG_FILE" 2>/dev/null | sed 's/.*MINIMAX_API_KEY: *//' | tr -d '\r' || true)
-
-if timeout 10 env MINIMAX_API_KEY="${MM_KEY:-}" uvx minimax-coding-plan-mcp 2>&1 | head -1 | grep -qi 'mcp'; then
-    log_info "MiniMax MCP 已缓存 ✓"
-else
+if ! timeout 10 env MINIMAX_API_KEY="${MM_KEY:-}" uvx minimax-coding-plan-mcp 2>&1 | head -1 | grep -qi 'mcp'; then
     log_warn "正在预下载 minimax-coding-plan-mcp，请稍候..."
     timeout 30 env MINIMAX_API_KEY="${MM_KEY:-}" uvx minimax-coding-plan-mcp 2>/dev/null || true
     log_info "MiniMax MCP 预下载完成 ✓"
+else
+    log_info "MiniMax MCP 已缓存 ✓"
 fi
 
-# --------------- 2. 配置文件 ---------------
+# ============================================================
+# 2. 配置文件
+# ============================================================
 log_info "========== 配置文件检查 =========="
 
 if [ ! -f "$CONFIG_FILE" ]; then
     log_info "创建 application.yml (从 example 模板)..."
     cp "$CONFIG_EXAMPLE" "$CONFIG_FILE"
 
-    # 修正 Linux 下的 Python 虚拟环境路径
     sed -i 's|mcp/paper-metadata-mcp/.venv/Scripts/python.exe|mcp/paper-metadata-mcp/.venv/bin/python|g' "$CONFIG_FILE"
     sed -i 's|mcp/paper-download-mcp/.venv/Scripts/python.exe|mcp/paper-download-mcp/.venv/bin/python|g' "$CONFIG_FILE"
 
@@ -170,18 +149,12 @@ if [ ! -f "$CONFIG_FILE" ]; then
     if [ "$ANSWER" = "y" ] || [ "$ANSWER" = "Y" ]; then
         read -rp "DeepSeek API Key: " DS_KEY
         read -rp "MiniMax API Key: " MM_KEY
-        if [ -n "$DS_KEY" ]; then
-            sed -i "s|<your-deepseek-api-key>|$DS_KEY|" "$CONFIG_FILE"
-        fi
-        if [ -n "$MM_KEY" ]; then
-            sed -i "s|<your-minimax-api-key>|$MM_KEY|" "$CONFIG_FILE"
-        fi
+        [ -n "$DS_KEY" ] && sed -i "s|<your-deepseek-api-key>|$DS_KEY|" "$CONFIG_FILE"
+        [ -n "$MM_KEY" ] && sed -i "s|<your-minimax-api-key>|$MM_KEY|" "$CONFIG_FILE"
         log_info "API Key 已写入配置"
     fi
 else
     log_info "application.yml 已存在 ✓"
-
-    # 检查是否还是 Windows 路径（从 Windows 克隆的项目）
     if grep -q 'Scripts/python.exe' "$CONFIG_FILE" 2>/dev/null; then
         log_warn "检测到 Windows 路径，正在修正为 Linux 路径..."
         sed -i 's|mcp/paper-metadata-mcp/.venv/Scripts/python.exe|mcp/paper-metadata-mcp/.venv/bin/python|g' "$CONFIG_FILE"
@@ -190,41 +163,31 @@ else
     fi
 fi
 
-# 检查 API Key 是否还是占位符
+# 检查 API Key 占位符
 MISSING_KEYS=""
-if grep -q '<your-deepseek-api-key>' "$CONFIG_FILE" 2>/dev/null; then
-    MISSING_KEYS="$MISSING_KEYS  - langchain4j.openai.api-key (DeepSeek)\n"
-fi
-if grep -q '<your-minimax-api-key>' "$CONFIG_FILE" 2>/dev/null; then
-    MISSING_KEYS="$MISSING_KEYS  - app.mcp.minimax.env.MINIMAX_API_KEY (MiniMax)\n"
-fi
+grep -q '<your-deepseek-api-key>' "$CONFIG_FILE" 2>/dev/null && MISSING_KEYS="$MISSING_KEYS  - langchain4j.openai.api-key (DeepSeek)\n"
+grep -q '<your-minimax-api-key>' "$CONFIG_FILE" 2>/dev/null && MISSING_KEYS="$MISSING_KEYS  - app.mcp.minimax.env.MINIMAX_API_KEY (MiniMax)\n"
 if [ -n "$MISSING_KEYS" ]; then
     echo ""
     log_warn "!!! 以下 API Key 未配置，后端将启动失败 !!!"
-    echo ""
     echo -e "$MISSING_KEYS"
     echo "  请编辑 ${CONFIG_FILE} 填入正确的 API Key 后重新运行。"
     echo ""
-    log_info "如果你不需要 MiniMax MCP（联网搜索降级），可以将其注释掉后继续。"
-    read -rp "现在输入 API Key? (y/n/skip 跳过继续尝试启动): " ANSWER
+    log_info "如果你不需要 MiniMax MCP，可以将其注释掉后继续。"
+    read -rp "现在输入 API Key? (y/n/skip 跳过继续): " ANSWER
     if [ "$ANSWER" = "y" ] || [ "$ANSWER" = "Y" ]; then
-        if echo "$MISSING_KEYS" | grep -q "deepseek"; then
-            read -rp "DeepSeek API Key: " DS_KEY
-            [ -n "$DS_KEY" ] && sed -i "s|<your-deepseek-api-key>|$DS_KEY|" "$CONFIG_FILE"
-        fi
-        if echo "$MISSING_KEYS" | grep -q "minimax"; then
-            read -rp "MiniMax API Key (回车跳过): " MM_KEY
-            [ -n "$MM_KEY" ] && sed -i "s|<your-minimax-api-key>|$MM_KEY|" "$CONFIG_FILE"
-        fi
+        echo "$MISSING_KEYS" | grep -q "deepseek" && { read -rp "DeepSeek API Key: " DS_KEY; [ -n "$DS_KEY" ] && sed -i "s|<your-deepseek-api-key>|$DS_KEY|" "$CONFIG_FILE"; }
+        echo "$MISSING_KEYS" | grep -q "minimax" && { read -rp "MiniMax API Key (回车跳过): " MM_KEY; [ -n "$MM_KEY" ] && sed -i "s|<your-minimax-api-key>|$MM_KEY|" "$CONFIG_FILE"; }
         log_info "API Key 已写入配置"
     elif [ "$ANSWER" != "skip" ]; then
-        echo ""
         log_error "请先配置 API Key 后重新运行。"
         exit 1
     fi
 fi
 
-# --------------- 3. Python MCP 虚拟环境 ---------------
+# ============================================================
+# 3. Python MCP 虚拟环境
+# ============================================================
 log_info "========== 搭建 Python MCP 服务 =========="
 
 setup_python_venv() {
@@ -248,41 +211,36 @@ setup_python_venv() {
 setup_python_venv "mcp/paper-metadata-mcp" "paper-metadata-mcp"
 setup_python_venv "mcp/paper-download-mcp" "paper-download-mcp"
 
-# --------------- 4. 前端依赖 ---------------
-log_info "========== 前端依赖 =========="
+# ============================================================
+# 4. 前端构建
+# ============================================================
+log_info "========== 前端构建 =========="
 cd "$PROJECT_ROOT/frontend"
-if [ -d "node_modules" ]; then
-    log_info "node_modules 已存在 ✓"
-else
+
+if [ ! -d "node_modules" ]; then
     log_info "安装前端 npm 依赖..."
     npm install
-    log_info "前端依赖安装完成 ✓"
 fi
 
-# 生产模式提前 build
-if [ "$RUN_MODE" = "prod" ]; then
-    log_info "构建生产版本 (npm run build)..."
-    npm run build
-    log_info "前端构建完成 → frontend/dist/ ✓"
-    cd "$PROJECT_ROOT"
-fi
+log_info "构建生产版本 (npm run build)..."
+npm run build
+log_info "前端构建完成 → frontend/dist/ ✓"
 
-# --------------- 6. Nginx 反向代理 ---------------
-log_info "========== Nginx 反向代理 =========="
+cd "$PROJECT_ROOT"
+
+# ============================================================
+# 5. Nginx 配置
+# ============================================================
+log_info "========== Nginx 配置 =========="
 
 NGINX_SITE="/etc/nginx/sites-available/bllose-agent"
 NGINX_ENABLED="/etc/nginx/sites-enabled/bllose-agent"
 
-nginx_already_setup() {
-    [ -f "$NGINX_ENABLED" ]
-}
-
-if nginx_already_setup; then
+if [ -f "$NGINX_ENABLED" ]; then
     log_info "Nginx 站点已配置，跳过 ✓"
 else
-    read -rp "是否配置 Nginx 反向代理 (80 端口)? (y/n): " NGINX_ANSWER
+    read -rp "是否配置 Nginx (80 端口, 静态托管 + API 代理)? (y/n): " NGINX_ANSWER
     if [ "$NGINX_ANSWER" = "y" ] || [ "$NGINX_ANSWER" = "Y" ]; then
-        # 安装 nginx
         if ! command -v nginx &>/dev/null; then
             log_info "安装 Nginx..."
             sudo apt update -qq && sudo apt install -y -qq nginx
@@ -291,92 +249,12 @@ else
 
         # 获取域名
         read -rp "域名 (直接回车使用 IP 访问): " DOMAIN_NAME
-        if [ -n "$DOMAIN_NAME" ]; then
-            SERVER_NAME="$DOMAIN_NAME"
-        else
-            SERVER_NAME="_"
-        fi
+        SERVER_NAME="${DOMAIN_NAME:-_}"
 
-        # 根据运行模式生成不同配置
-        if [ "$RUN_MODE" = "prod" ]; then
-            # 生产模式: nginx 直接 serve 静态文件 + SPA fallback + API 代理
-            sudo tee "$NGINX_SITE" > /dev/null << NGINX_EOF
-# BlloseAgent4J — 生产模式 (nginx 静态托管)
-server {
-    listen 80;
-    server_name $SERVER_NAME;
-
-    access_log /var/log/nginx/bllose-agent-access.log;
-    error_log  /var/log/nginx/bllose-agent-error.log;
-
-    root $PROJECT_ROOT/frontend/dist;
-    index index.html;
-
-    # API → Spring Boot :8080 (SSE 流式)
-    location /api/ {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_http_version 1.1;
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_set_header Connection '';
-        chunked_transfer_encoding on;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
-    }
-
-    # SPA fallback (Vue Router history mode)
-    location / {
-        try_files \$uri \$uri/ /index.html;
-    }
-}
-NGINX_EOF
-        else
-            # 开发模式: nginx 代理到 Vite dev server + API 代理
-            sudo tee "$NGINX_SITE" > /dev/null << NGINX_EOF
-# BlloseAgent4J — 开发模式 (Vite 代理)
-server {
-    listen 80;
-    server_name $SERVER_NAME;
-
-    access_log /var/log/nginx/bllose-agent-access.log;
-    error_log  /var/log/nginx/bllose-agent-error.log;
-
-    # API → Spring Boot :8080 (SSE 流式)
-    location /api/ {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_http_version 1.1;
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_set_header Connection '';
-        chunked_transfer_encoding on;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
-    }
-
-    # 前端 → Vite :5173
-    location / {
-        proxy_pass http://127.0.0.1:5173;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-NGINX_EOF
-        fi
-
-        log_info "Nginx 配置已写入 $NGINX_SITE"
+        # 基于 nginx.conf 模板生成，替换 root 路径和 server_name
+        sudo cp "$PROJECT_ROOT/nginx.conf" "$NGINX_SITE"
+        sudo sed -i "s|root .*;|root $PROJECT_ROOT/frontend/dist;|" "$NGINX_SITE"
+        sudo sed -i "s/server_name _;/server_name $SERVER_NAME;/" "$NGINX_SITE"
 
         # 启用站点
         if [ -f /etc/nginx/sites-enabled/default ]; then
@@ -396,21 +274,23 @@ NGINX_EOF
     fi
 fi
 
-# --------------- 7. 数据库目录 ---------------
+# ============================================================
+# 6. 数据库目录
+# ============================================================
 mkdir -p "$PROJECT_ROOT/data" "$PROJECT_ROOT/downloads"
 
-# --------------- 8. 启动服务 ---------------
-log_info "========== 启动服务 =========="
+# ============================================================
+# 7. 启动后端
+# ============================================================
+log_info "========== 启动后端 =========="
 
-# 后端 (Spring Boot)
-log_info "启动后端 (Spring Boot, 端口 8080)..."
+log_info "启动 Spring Boot (端口 8080)..."
 cd "$PROJECT_ROOT"
 mvn spring-boot:run -q &
 BACKEND_PID=$!
 log_info "后端 PID: $BACKEND_PID"
 
-# 等待后端就绪
-log_info "等待后端启动..."
+log_info "等待后端就绪..."
 for i in $(seq 1 60); do
     if curl -s http://localhost:8080/api/auth/login >/dev/null 2>&1; then
         log_info "后端就绪 ✓"
@@ -427,45 +307,26 @@ if ! curl -s http://localhost:8080/api/auth/login >/dev/null 2>&1; then
     log_warn "后端未在 120 秒内就绪，可能仍在启动中..."
 fi
 
-# 前端
-if [ "$RUN_MODE" = "dev" ]; then
-    log_info "启动前端 (Vite, 端口 5173)..."
-    cd "$PROJECT_ROOT/frontend"
-    npm run dev &
-    FRONTEND_PID=$!
-    log_info "前端 PID: $FRONTEND_PID"
-    cd "$PROJECT_ROOT"
-    sleep 3
-else
-    log_info "前端: Nginx 直接 serve frontend/dist/ (无独立进程)"
-fi
-
-# --------------- 9. 完成 ---------------
+# ============================================================
+# 8. 完成
+# ============================================================
 echo ""
 echo "=============================================="
-echo -e "  ${GREEN}BlloseAgent4J 启动成功!${NC}"
+echo -e "  ${GREEN}BlloseAgent4J 部署完成!${NC}"
 echo "=============================================="
 echo ""
-echo "  运行模式: $([ "$RUN_MODE" = "prod" ] && echo '生产 (静态托管)' || echo '开发 (Vite HMR)')"
-echo "  后端:     http://localhost:8080"
-echo ""
+echo "  后端 API:  http://localhost:8080"
 if [ -f "$NGINX_ENABLED" ]; then
     SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'your-server-ip')
-    echo "  对外访问: http://$SERVER_IP"
-    if [ "$RUN_MODE" = "dev" ]; then
-        echo "  Vite HMR: http://localhost:5173"
-    fi
-else
-    echo "  前端:     http://localhost:5173"
+    echo "  对外访问:  http://$SERVER_IP"
 fi
 echo ""
-echo "  进程:"
-echo "    Nginx:               systemctl (80 端口)"
-echo "    后端 (Spring Boot):  PID $BACKEND_PID"
-if [ "$RUN_MODE" = "dev" ]; then
-    echo "    前端 (Vite):         PID $FRONTEND_PID"
-fi
+echo "  运行中的服务:"
+echo "    Nginx               → systemctl (80 端口)"
+echo "    Spring Boot (后端)  → PID $BACKEND_PID (8080 端口)"
+echo "    前端静态文件         → frontend/dist/ (Nginx 直接 serve)"
 echo ""
+echo "  如需更新前端: cd frontend && npm run build"
 echo "  按 Ctrl+C 停止后端"
 echo "=============================================="
 
