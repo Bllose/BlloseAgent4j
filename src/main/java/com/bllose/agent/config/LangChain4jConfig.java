@@ -1,8 +1,12 @@
 package com.bllose.agent.config;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -54,6 +58,8 @@ public class LangChain4jConfig {
 
     @Value("${langchain4j.openai.log-responses:false}")
     private boolean logResponses;
+
+    private static final Logger log = LoggerFactory.getLogger(LangChain4jConfig.class);
 
     private final McpProperties mcpProperties;
 
@@ -150,8 +156,7 @@ public class LangChain4jConfig {
                 .build();
     }
 
-    @Bean
-    McpClient minimaxMcpClient() {
+    private McpClient createMinimaxClient() {
         var transportBuilder = new StdioMcpTransport.Builder()
                 .command(mcpProperties.getMinimax().getCommand());
         if (mcpProperties.getMinimax().getEnv() != null) {
@@ -166,10 +171,20 @@ public class LangChain4jConfig {
     @Bean
     ToolProvider allMcpToolProvider(
             McpClient paperMetadataMcpClient,
-            McpClient paperDownloadMcpClient,
-            McpClient minimaxMcpClient) {
+            McpClient paperDownloadMcpClient) {
+        List<McpClient> clients = new ArrayList<>();
+        clients.add(paperMetadataMcpClient);
+        clients.add(paperDownloadMcpClient);
+
+        try {
+            clients.add(createMinimaxClient());
+            log.info("MiniMax MCP client initialized");
+        } catch (Exception e) {
+            log.warn("MiniMax MCP 不可用，将以无网络搜索模式启动: {}", e.getMessage());
+        }
+
         return McpToolProvider.builder()
-                .mcpClients(paperMetadataMcpClient, paperDownloadMcpClient, minimaxMcpClient)
+                .mcpClients(clients)
                 .build();
     }
 

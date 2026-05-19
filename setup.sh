@@ -102,6 +102,31 @@ if ! command -v uvx &>/dev/null; then
 fi
 log_info "uvx $(uvx --version 2>&1 || echo '✓') ✓"
 
+# PyPI 镜像检测 (国内服务器 PyPI 访问慢/不通)
+UV_CONFIG="$HOME/.config/uv/uv.toml"
+if [ ! -f "$UV_CONFIG" ]; then
+    log_info "检测 PyPI 连通性..."
+    if ! timeout 5 python3 -c "import urllib.request; urllib.request.urlopen('https://pypi.org/simple/', timeout=5)" 2>/dev/null; then
+        log_warn "PyPI 访问超时，自动配置清华镜像..."
+        mkdir -p "$HOME/.config/uv"
+        cat > "$UV_CONFIG" << 'EOF'
+[pip]
+index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+EOF
+        log_info "uv PyPI 镜像已配置 → 清华源"
+    fi
+fi
+
+# 预下载 MiniMax MCP 依赖 (首次较慢，提前缓存避免启动超时)
+log_info "预热 MiniMax MCP 依赖 (首次可能需要几分钟)..."
+if timeout 10 uvx minimax-coding-plan-mcp 2>&1 | head -1 | grep -qi 'mcp'; then
+    log_info "MiniMax MCP 已缓存 ✓"
+else
+    log_warn "正在预下载 minimax-coding-plan-mcp，请稍候..."
+    timeout 30 uvx minimax-coding-plan-mcp 2>/dev/null || true
+    log_info "MiniMax MCP 预下载完成 ✓"
+fi
+
 # --------------- 2. 配置文件 ---------------
 log_info "========== 配置文件检查 =========="
 CONFIG_FILE="$PROJECT_ROOT/src/main/resources/application.yml"
@@ -140,6 +165,40 @@ else
         sed -i 's|mcp/paper-metadata-mcp/.venv/Scripts/python.exe|mcp/paper-metadata-mcp/.venv/bin/python|g' "$CONFIG_FILE"
         sed -i 's|mcp/paper-download-mcp/.venv/Scripts/python.exe|mcp/paper-download-mcp/.venv/bin/python|g' "$CONFIG_FILE"
         log_info "路径修正完成"
+    fi
+fi
+
+# 检查 API Key 是否还是占位符
+MISSING_KEYS=""
+if grep -q '<your-deepseek-api-key>' "$CONFIG_FILE" 2>/dev/null; then
+    MISSING_KEYS="$MISSING_KEYS  - langchain4j.openai.api-key (DeepSeek)\n"
+fi
+if grep -q '<your-minimax-api-key>' "$CONFIG_FILE" 2>/dev/null; then
+    MISSING_KEYS="$MISSING_KEYS  - app.mcp.minimax.env.MINIMAX_API_KEY (MiniMax)\n"
+fi
+if [ -n "$MISSING_KEYS" ]; then
+    echo ""
+    log_warn "!!! 以下 API Key 未配置，后端将启动失败 !!!"
+    echo ""
+    echo -e "$MISSING_KEYS"
+    echo "  请编辑 ${CONFIG_FILE} 填入正确的 API Key 后重新运行。"
+    echo ""
+    log_info "如果你不需要 MiniMax MCP（联网搜索降级），可以将其注释掉后继续。"
+    read -rp "现在输入 API Key? (y/n/skip 跳过继续尝试启动): " ANSWER
+    if [ "$ANSWER" = "y" ] || [ "$ANSWER" = "Y" ]; then
+        if echo "$MISSING_KEYS" | grep -q "deepseek"; then
+            read -rp "DeepSeek API Key: " DS_KEY
+            [ -n "$DS_KEY" ] && sed -i "s|<your-deepseek-api-key>|$DS_KEY|" "$CONFIG_FILE"
+        fi
+        if echo "$MISSING_KEYS" | grep -q "minimax"; then
+            read -rp "MiniMax API Key (回车跳过): " MM_KEY
+            [ -n "$MM_KEY" ] && sed -i "s|<your-minimax-api-key>|$MM_KEY|" "$CONFIG_FILE"
+        fi
+        log_info "API Key 已写入配置"
+    elif [ "$ANSWER" != "skip" ]; then
+        echo ""
+        log_error "请先配置 API Key 后重新运行。"
+        exit 1
     fi
 fi
 
