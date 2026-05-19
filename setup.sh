@@ -241,10 +241,56 @@ else
     log_info "前端依赖安装完成 ✓"
 fi
 
-# --------------- 5. 数据库目录 ---------------
+# --------------- 6. Nginx 反向代理 ---------------
+log_info "========== Nginx 反向代理 =========="
+
+NGINX_CONF="$PROJECT_ROOT/nginx.conf"
+NGINX_SITE="/etc/nginx/sites-available/bllose-agent"
+NGINX_ENABLED="/etc/nginx/sites-enabled/bllose-agent"
+
+if [ -f "$NGINX_ENABLED" ]; then
+    log_info "Nginx 站点已配置 ✓"
+else
+    read -rp "是否配置 Nginx 反向代理 (80 端口 → 前端:5173 + 后端:8080)? (y/n): " NGINX_ANSWER
+    if [ "$NGINX_ANSWER" = "y" ] || [ "$NGINX_ANSWER" = "Y" ]; then
+        # 安装 nginx
+        if ! command -v nginx &>/dev/null; then
+            log_info "安装 Nginx..."
+            sudo apt update -qq && sudo apt install -y -qq nginx
+        fi
+        log_info "Nginx $(nginx -v 2>&1) ✓"
+
+        # 部署配置
+        sudo cp "$NGINX_CONF" "$NGINX_SITE"
+
+        # 替换 server_name（如果有域名）
+        read -rp "域名（直接回车使用 IP 访问）: " DOMAIN_NAME
+        if [ -n "$DOMAIN_NAME" ]; then
+            sudo sed -i "s/server_name _;/server_name $DOMAIN_NAME;/" "$NGINX_SITE"
+        fi
+
+        # 启用站点
+        if [ -f /etc/nginx/sites-enabled/default ]; then
+            sudo rm -f /etc/nginx/sites-enabled/default
+        fi
+        sudo ln -sf "$NGINX_SITE" "$NGINX_ENABLED"
+
+        # 测试并重载
+        if sudo nginx -t 2>/dev/null; then
+            sudo systemctl reload nginx 2>/dev/null || sudo nginx -s reload
+            log_info "Nginx 已启动，监听 80 端口 ✓"
+        else
+            log_error "Nginx 配置测试失败，请检查 $NGINX_SITE"
+        fi
+    else
+        log_info "跳过 Nginx 配置"
+    fi
+fi
+
+# --------------- 7. 数据库目录 ---------------
 mkdir -p "$PROJECT_ROOT/data" "$PROJECT_ROOT/downloads"
 
-# --------------- 6. 启动服务 ---------------
+# --------------- 8. 启动服务 ---------------
 log_info "========== 启动服务 =========="
 
 # 后端 (Spring Boot)
@@ -281,13 +327,18 @@ log_info "前端 PID: $FRONTEND_PID"
 
 sleep 3
 
-# --------------- 7. 完成 ---------------
+# --------------- 9. 完成 ---------------
 echo ""
 echo "=============================================="
 echo -e "  ${GREEN}BlloseAgent4J 启动成功!${NC}"
 echo "=============================================="
 echo ""
-echo "  前端:  http://localhost:5173"
+if [ -f "$NGINX_ENABLED" ]; then
+    echo "  对外:  http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'your-server-ip')"
+    echo "  前端:  http://localhost:5173 (Vite HMR)"
+else
+    echo "  前端:  http://localhost:5173"
+fi
 echo "  后端:  http://localhost:8080"
 echo ""
 echo "  进程 PID:"
