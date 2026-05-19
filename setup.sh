@@ -104,6 +104,24 @@ if ! command -v uvx &>/dev/null; then
 fi
 log_info "uvx $(uvx --version 2>&1 || echo '✓') ✓"
 
+# --------------- 2. 运行模式 ---------------
+echo ""
+echo "=============================================="
+echo "  选择运行模式"
+echo "=============================================="
+echo "  [1] 生产模式 — npm build + Nginx 静态托管 (推荐)"
+echo "  [2] 开发模式 — Vite HMR 热更新开发服务器"
+echo ""
+read -rp "请选择 (1/2, 默认 1): " MODE_CHOICE
+MODE_CHOICE="${MODE_CHOICE:-1}"
+if [ "$MODE_CHOICE" = "2" ]; then
+    RUN_MODE="dev"
+    log_info "运行模式: 开发 (Vite HMR)"
+else
+    RUN_MODE="prod"
+    log_info "运行模式: 生产 (Nginx 静态托管)"
+fi
+
 # PyPI 镜像检测 (国内服务器 PyPI 访问慢/不通)
 UV_CONFIG="$HOME/.config/uv/uv.toml"
 if [ ! -f "$UV_CONFIG" ]; then
@@ -241,17 +259,28 @@ else
     log_info "前端依赖安装完成 ✓"
 fi
 
+# 生产模式提前 build
+if [ "$RUN_MODE" = "prod" ]; then
+    log_info "构建生产版本 (npm run build)..."
+    npm run build
+    log_info "前端构建完成 → frontend/dist/ ✓"
+    cd "$PROJECT_ROOT"
+fi
+
 # --------------- 6. Nginx 反向代理 ---------------
 log_info "========== Nginx 反向代理 =========="
 
-NGINX_CONF="$PROJECT_ROOT/nginx.conf"
 NGINX_SITE="/etc/nginx/sites-available/bllose-agent"
 NGINX_ENABLED="/etc/nginx/sites-enabled/bllose-agent"
 
-if [ -f "$NGINX_ENABLED" ]; then
-    log_info "Nginx 站点已配置 ✓"
+nginx_already_setup() {
+    [ -f "$NGINX_ENABLED" ]
+}
+
+if nginx_already_setup; then
+    log_info "Nginx 站点已配置，跳过 ✓"
 else
-    read -rp "是否配置 Nginx 反向代理 (80 端口 → 前端:5173 + 后端:8080)? (y/n): " NGINX_ANSWER
+    read -rp "是否配置 Nginx 反向代理 (80 端口)? (y/n): " NGINX_ANSWER
     if [ "$NGINX_ANSWER" = "y" ] || [ "$NGINX_ANSWER" = "Y" ]; then
         # 安装 nginx
         if ! command -v nginx &>/dev/null; then
@@ -260,14 +289,94 @@ else
         fi
         log_info "Nginx $(nginx -v 2>&1) ✓"
 
-        # 部署配置
-        sudo cp "$NGINX_CONF" "$NGINX_SITE"
-
-        # 替换 server_name（如果有域名）
-        read -rp "域名（直接回车使用 IP 访问）: " DOMAIN_NAME
+        # 获取域名
+        read -rp "域名 (直接回车使用 IP 访问): " DOMAIN_NAME
         if [ -n "$DOMAIN_NAME" ]; then
-            sudo sed -i "s/server_name _;/server_name $DOMAIN_NAME;/" "$NGINX_SITE"
+            SERVER_NAME="$DOMAIN_NAME"
+        else
+            SERVER_NAME="_"
         fi
+
+        # 根据运行模式生成不同配置
+        if [ "$RUN_MODE" = "prod" ]; then
+            # 生产模式: nginx 直接 serve 静态文件 + SPA fallback + API 代理
+            sudo tee "$NGINX_SITE" > /dev/null << NGINX_EOF
+# BlloseAgent4J — 生产模式 (nginx 静态托管)
+server {
+    listen 80;
+    server_name $SERVER_NAME;
+
+    access_log /var/log/nginx/bllose-agent-access.log;
+    error_log  /var/log/nginx/bllose-agent-error.log;
+
+    root $PROJECT_ROOT/frontend/dist;
+    index index.html;
+
+    # API → Spring Boot :8080 (SSE 流式)
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_set_header Connection '';
+        chunked_transfer_encoding on;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # SPA fallback (Vue Router history mode)
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+}
+NGINX_EOF
+        else
+            # 开发模式: nginx 代理到 Vite dev server + API 代理
+            sudo tee "$NGINX_SITE" > /dev/null << NGINX_EOF
+# BlloseAgent4J — 开发模式 (Vite 代理)
+server {
+    listen 80;
+    server_name $SERVER_NAME;
+
+    access_log /var/log/nginx/bllose-agent-access.log;
+    error_log  /var/log/nginx/bllose-agent-error.log;
+
+    # API → Spring Boot :8080 (SSE 流式)
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_set_header Connection '';
+        chunked_transfer_encoding on;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # 前端 → Vite :5173
+    location / {
+        proxy_pass http://127.0.0.1:5173;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+NGINX_EOF
+        fi
+
+        log_info "Nginx 配置已写入 $NGINX_SITE"
 
         # 启用站点
         if [ -f /etc/nginx/sites-enabled/default ]; then
@@ -318,14 +427,18 @@ if ! curl -s http://localhost:8080/api/auth/login >/dev/null 2>&1; then
     log_warn "后端未在 120 秒内就绪，可能仍在启动中..."
 fi
 
-# 前端 (Vite)
-log_info "启动前端 (Vite, 端口 5173)..."
-cd "$PROJECT_ROOT/frontend"
-npm run dev &
-FRONTEND_PID=$!
-log_info "前端 PID: $FRONTEND_PID"
-
-sleep 3
+# 前端
+if [ "$RUN_MODE" = "dev" ]; then
+    log_info "启动前端 (Vite, 端口 5173)..."
+    cd "$PROJECT_ROOT/frontend"
+    npm run dev &
+    FRONTEND_PID=$!
+    log_info "前端 PID: $FRONTEND_PID"
+    cd "$PROJECT_ROOT"
+    sleep 3
+else
+    log_info "前端: Nginx 直接 serve frontend/dist/ (无独立进程)"
+fi
 
 # --------------- 9. 完成 ---------------
 echo ""
@@ -333,19 +446,27 @@ echo "=============================================="
 echo -e "  ${GREEN}BlloseAgent4J 启动成功!${NC}"
 echo "=============================================="
 echo ""
+echo "  运行模式: $([ "$RUN_MODE" = "prod" ] && echo '生产 (静态托管)' || echo '开发 (Vite HMR)')"
+echo "  后端:     http://localhost:8080"
+echo ""
 if [ -f "$NGINX_ENABLED" ]; then
-    echo "  对外:  http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'your-server-ip')"
-    echo "  前端:  http://localhost:5173 (Vite HMR)"
+    SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'your-server-ip')
+    echo "  对外访问: http://$SERVER_IP"
+    if [ "$RUN_MODE" = "dev" ]; then
+        echo "  Vite HMR: http://localhost:5173"
+    fi
 else
-    echo "  前端:  http://localhost:5173"
+    echo "  前端:     http://localhost:5173"
 fi
-echo "  后端:  http://localhost:8080"
 echo ""
-echo "  进程 PID:"
-echo "    后端 (Spring Boot): $BACKEND_PID"
-echo "    前端 (Vite):        $FRONTEND_PID"
+echo "  进程:"
+echo "    Nginx:               systemctl (80 端口)"
+echo "    后端 (Spring Boot):  PID $BACKEND_PID"
+if [ "$RUN_MODE" = "dev" ]; then
+    echo "    前端 (Vite):         PID $FRONTEND_PID"
+fi
 echo ""
-echo "  按 Ctrl+C 停止所有服务"
+echo "  按 Ctrl+C 停止后端"
 echo "=============================================="
 
 wait
