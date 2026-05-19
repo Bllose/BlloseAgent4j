@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class SessionManager {
+
     private final Map<String, Long> sessions = new ConcurrentHashMap<>();
 
     public String createSession(Long userId) {
@@ -22,5 +23,9 @@ public class SessionManager {
 
     public void removeSession(String sessionId) {
         sessions.remove(sessionId);
+    }
+
+    public boolean isValid(String sessionId) {
+        return sessions.containsKey(sessionId);
     }
 }
