@@ -48,3 +48,18 @@ CREATE TABLE IF NOT EXISTS paper_metadata (
 -- Add source_url to tables created before this column was introduced.
 -- Ignored if column already exists (spring.sql.init.continue-on-error=true).
 ALTER TABLE paper_downloads ADD COLUMN source_url TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS guest_sessions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    fingerprint     TEXT    NOT NULL UNIQUE,
+    fingerprint_hash TEXT   NOT NULL DEFAULT '',
+    guest_name      TEXT    NOT NULL DEFAULT 'Guest',
+    first_login     TEXT    NOT NULL,
+    last_login      TEXT    NOT NULL,
+    auth_expiry     TEXT    NOT NULL,
+    last_session    TEXT    NOT NULL DEFAULT '',
+    request_count   INTEGER NOT NULL DEFAULT 0,
+    last_visits     TEXT    NOT NULL DEFAULT '[]',
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+);

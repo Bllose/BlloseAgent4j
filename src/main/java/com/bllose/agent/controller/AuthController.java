@@ -3,6 +3,8 @@ package com.bllose.agent.controller;
 import com.bllose.agent.auth.AuthService;
 import com.bllose.agent.model.AuthRequest;
 import com.bllose.agent.model.AuthResponse;
+import com.bllose.agent.model.GuestRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,5 +35,21 @@ public class AuthController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(e.getMessage());
         }
+    }
+
+    @GetMapping("/hello-guest")
+    public ResponseEntity<?> helloGuest(HttpServletResponse response) {
+        AuthResponse auth = authService.helloGuest();
+        response.setHeader("X-Session-Id", auth.sessionId());
+        response.setHeader("Access-Control-Expose-Headers", "X-Session-Id");
+        return ResponseEntity.ok(auth);
+    }
+
+    @PostMapping("/guest")
+    public ResponseEntity<?> guest(@RequestBody GuestRequest req, HttpServletResponse response) {
+        AuthResponse auth = authService.guestLogin(req);
+        response.setHeader("X-Session-Id", auth.sessionId());
+        response.setHeader("Access-Control-Expose-Headers", "X-Session-Id");
+        return ResponseEntity.ok(auth);
     }
 }
