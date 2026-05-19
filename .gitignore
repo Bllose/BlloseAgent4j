@@ -1,0 +1,46 @@
+# ===== Java / Maven =====
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+*.log
+
+# ===== Node / Vite =====
+node_modules/
+dist/
+.vite/
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ===== SQLite =====
+data/*.db
+
+# ===== Downloads =====
+downloads/
+
+# ===== Environment =====
+.env
+.env.local
+.env.*.local
+
+# ===== Spring Boot config (contains secrets) =====
+src/main/resources/application.yml
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+
+# ===== IDE (track only shared configs) =====
+.idea/
+*.iml
+.vscode/settings.json

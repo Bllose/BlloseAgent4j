@@ -1,0 +1,23 @@
+# ── Deep Debug Profile ──
+# 激活方式: -Dspring.profiles.active=debug
+# 用途:   查看发往 DeepSeek 的原始 HTTP 字节流
+
+langchain4j:
+  openai:
+    log-requests: true
+    log-responses: true
+
+logging:
+  level:
+    # LangChain4j 完整内部日志
+    dev.langchain4j: TRACE
+    dev.langchain4j.model.openai: TRACE
+    # OkHttp 网络层日志 (请求/响应头)
+    okhttp3: TRACE
+    okhttp3.internal: DEBUG
+    okhttp3.logging: TRACE
+    # 项目 Listener 边界日志
+    com.bllose.agent.debug: TRACE
+    com.bllose.agent.service: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %highlight(%-5level) [%thread] %cyan(%logger{36}) - %msg%n"

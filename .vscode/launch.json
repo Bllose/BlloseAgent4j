@@ -1,0 +1,58 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Backend",
+      "type": "java",
+      "request": "launch",
+      "mainClass": "com.bllose.agent.BlloseAgentApplication",
+      "args": "",
+      "vmArgs": "-Dspring.profiles.active=dev",
+      "console": "internalConsole"
+    },
+    {
+      "name": "Debug Backend (Verbose)",
+      "type": "java",
+      "request": "launch",
+      "mainClass": "com.bllose.agent.BlloseAgentApplication",
+      "args": "",
+      "vmArgs": "-Dspring.profiles.active=debug",
+      "console": "internalConsole"
+    },
+    {
+      "name": "Launch Frontend",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/frontend",
+      "sourceMapPathOverrides": {
+        "webpack:///./*": "${webRoot}/*",
+        "webpack:///src/*": "${webRoot}/src/*"
+      }
+    },
+    {
+      "name": "Debug Frontend (Full)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/frontend",
+      "preLaunchTask": "start-frontend",
+      "sourceMapPathOverrides": {
+        "webpack:///./*": "${webRoot}/*",
+        "webpack:///src/*": "${webRoot}/src/*"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Debug Full Stack",
+      "configurations": ["Debug Backend", "Debug Frontend (Full)"],
+      "stopAll": true
+    },
+    {
+      "name": "Debug Full Stack (Verbose)",
+      "configurations": ["Debug Backend (Verbose)", "Debug Frontend (Full)"],
+      "stopAll": true
+    }
+  ]
+}

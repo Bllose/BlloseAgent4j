@@ -1,0 +1,61 @@
+server:
+  port: 8080
+  error:
+    include-message: always
+
+spring:
+  application:
+    name: bllose-agent
+  datasource:
+    url: jdbc:sqlite:data/bllose-agent.db
+    driver-class-name: org.sqlite.JDBC
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+app:
+  auth:
+    bCrypt-strength: 12
+  cors:
+    allowed-origin: http://localhost:5173
+  mcp:
+    paper-metadata:
+      command:
+        - mcp/paper-metadata-mcp/.venv/Scripts/python.exe
+        - mcp/paper-metadata-mcp/server.py
+    paper-download:
+      command:
+        - mcp/paper-download-mcp/.venv/Scripts/python.exe
+        - mcp/paper-download-mcp/server.py
+    minimax:
+      command:
+        - uvx
+        - minimax-coding-plan-mcp
+      env:
+        MINIMAX_API_KEY: <your-minimax-api-key>
+        MINIMAX_API_HOST: https://api.minimaxi.com
+    download-dir: ./downloads
+
+langchain4j:
+  openai:
+    api-key: <your-deepseek-api-key>
+    model-name: deepseek-v4-flash
+    base-url: https://api.deepseek.com
+    temperature: 0.7
+    timeout-seconds: 120
+    thinking:
+      enabled: true
+      effort: high
+    log-requests: true
+    log-responses: true
+  memory:
+    max-messages: 20
+
+logging:
+  level:
+    dev.langchain4j: DEBUG
+    okhttp3: DEBUG
+    com.bllose.agent: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %highlight(%-5level) [%thread] %cyan(%logger{36}) - %msg%n"
