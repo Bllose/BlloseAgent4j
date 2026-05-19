@@ -20,10 +20,12 @@ Or add to Claude Desktop config:
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 import os
 import re
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -87,6 +89,78 @@ def _safe_filename(doi_or_url: str, suffix: str = ".pdf") -> str:
     return name
 
 
+# ── Database cache ────────────────────────────────────────
+
+_db_path: str | None = None
+
+_default_output_dir = os.environ.get("PAPER_DOWNLOAD_DIR", "./downloads")
+
+
+def set_db_path(path: str) -> None:
+    global _db_path
+    _db_path = path
+
+
+def _check_cache(external_id: str) -> str | None:
+    """Check if a paper is already in the download cache DB.
+
+    Returns a formatted cached-result string if found and the file still exists,
+    or None if not cached / file missing.
+    """
+    if not _db_path:
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{_db_path}?mode=ro", uri=True)
+        try:
+            cur = conn.execute(
+                "SELECT file_name, file_size, source_url FROM paper_downloads WHERE external_id = ?",
+                (external_id,),
+            )
+            row = cur.fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            return None
+        file_name, file_size, source_url = row
+        if not os.path.isfile(file_name):
+            return None
+        size_mb = file_size / (1024 * 1024) if file_size else 0
+        size_str = f"{size_mb:.1f} MB" if size_mb > 1 else f"{file_size / 1024:.0f} KB" if file_size else "unknown"
+        lines = [
+            f"Already downloaded (cached): {file_name}",
+            f"Size: {size_str}",
+        ]
+        if source_url:
+            lines.append(f"Source URL: {source_url}")
+        lines.append(f"DOI/ID: {external_id}")
+        return "\n".join(lines)
+    except Exception as e:
+        logger.warning("Cache check failed for %s: %s", external_id, e)
+        return None
+
+
+def _save_to_cache(external_id: str, source_url: str, file_name: str, file_size: int) -> None:
+    """Save a download record to the cache DB."""
+    if not _db_path:
+        logger.debug("No db_path set, skipping cache save")
+        return
+    try:
+        conn = sqlite3.connect(_db_path)
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO paper_downloads"
+                " (external_id, id_type, source_url, file_name, file_size)"
+                " VALUES (?, 'DOI', ?, ?, ?)",
+                (external_id, source_url, file_name, file_size),
+            )
+            conn.commit()
+            logger.info("Saved to cache: %s -> %s", external_id, file_name)
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("Cache save failed for %s: %s", external_id, e)
+
+
 # ── Tool: find_pdf_url ───────────────────────────────────
 
 
@@ -134,6 +208,11 @@ async def _download_to(url: str, dest: Path) -> DownloadResult:
 
 async def _download_pdf(doi: str, output_dir: str) -> DownloadResult | str:
     """Find PDF URL for a DOI, download it, return result or error message."""
+    # Check cache first
+    cached = _check_cache(doi)
+    if cached is not None:
+        return cached
+
     source = await _find_pdf_url(doi)
     if source is None:
         return f"No PDF URL found for DOI {doi}."
@@ -145,6 +224,7 @@ async def _download_pdf(doi: str, output_dir: str) -> DownloadResult | str:
     try:
         result = await _download_to(source.url, dest_path)
         result.doi = doi
+        _save_to_cache(doi, source.url, result.file_path, result.file_size_bytes)
         return result
     except httpx.HTTPStatusError as e:
         return f"Download failed for {doi}: HTTP {e.response.status_code}"
@@ -154,12 +234,18 @@ async def _download_pdf(doi: str, output_dir: str) -> DownloadResult | str:
 
 async def _download_from_url(url: str, output_dir: str) -> DownloadResult | str:
     """Download PDF from a direct URL, return result or error message."""
+    # Check cache first (use URL as cache key)
+    cached = _check_cache(url)
+    if cached is not None:
+        return cached
+
     dest_dir = Path(output_dir).expanduser().resolve()
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest_path = dest_dir / _safe_filename(url)
 
     try:
         result = await _download_to(url, dest_path)
+        _save_to_cache(url, url, result.file_path, result.file_size_bytes)
         return result
     except httpx.HTTPStatusError as e:
         return f"Download failed from {url}: HTTP {e.response.status_code}"
@@ -238,14 +324,14 @@ async def handle_list_tools() -> list[types.Tool]:
                         "description": "Directory to save the PDF file",
                     },
                 },
-                "required": ["doi", "output_dir"],
+                "required": ["doi"],
             },
         ),
         types.Tool(
             name="download_pdf_from_url",
             description=(
                 "Download a PDF from a direct URL. "
-                "Saves the file to the specified output directory."
+                "Saves the file to the specified output directory (defaults to ./downloads)."
             ),
             inputSchema={
                 "type": "object",
@@ -256,10 +342,10 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                     "output_dir": {
                         "type": "string",
-                        "description": "Directory to save the PDF file",
+                        "description": "Directory to save the PDF file (default: ./downloads)",
                     },
                 },
-                "required": ["url", "output_dir"],
+                "required": ["url"],
             },
         ),
     ]
@@ -283,9 +369,7 @@ async def handle_call_tool(
         doi = arguments.get("doi", "").strip()
         if not doi:
             raise ValueError("doi is required")
-        output_dir = arguments.get("output_dir", "").strip()
-        if not output_dir:
-            raise ValueError("output_dir is required")
+        output_dir = arguments.get("output_dir", "").strip() or _default_output_dir
         result = await _download_pdf(doi, output_dir)
         return [types.TextContent(type="text", text=_fmt_download_result(result, f"DOI {doi}"))]
 
@@ -293,9 +377,7 @@ async def handle_call_tool(
         url = arguments.get("url", "").strip()
         if not url:
             raise ValueError("url is required")
-        output_dir = arguments.get("output_dir", "").strip()
-        if not output_dir:
-            raise ValueError("output_dir is required")
+        output_dir = arguments.get("output_dir", "").strip() or _default_output_dir
         result = await _download_from_url(url, output_dir)
         return [types.TextContent(type="text", text=_fmt_download_result(result, f"URL {url}"))]
 
@@ -307,7 +389,7 @@ async def handle_call_tool(
 
 async def main() -> None:
     async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-        logger.info("paper-download-mcp server started")
+        logger.info("paper-download-mcp server started (db_path=%s)", _db_path or "none")
         await server.run(
             read_stream,
             write_stream,
@@ -323,4 +405,10 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="paper-download-mcp")
+    parser.add_argument("--db-path", default=os.environ.get("PAPER_DB_PATH"),
+                        help="Path to SQLite download cache database")
+    args, _ = parser.parse_known_args()
+    if args.db_path:
+        set_db_path(args.db_path)
     asyncio.run(main())

@@ -30,6 +30,18 @@
             <div style="font-size: 12px; color: var(--n-text-color-3); margin-bottom: 4px;">Response</div>
             <div class="markdown-body" v-html="renderContent(msg.content)" />
           </n-card>
+          <!-- Downloads -->
+          <div v-if="msg.downloads && msg.downloads.length" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+            <a
+              v-for="dl in msg.downloads" :key="dl.filename"
+              :href="dl.url"
+              target="_blank"
+              style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--n-color-target); border: 1px solid var(--n-border-color); border-radius: 4px; text-decoration: none; color: var(--n-text-color); font-size: 13px;"
+            >
+              <span style="font-size: 16px;">📥</span>
+              {{ dl.filename }}
+            </a>
+          </div>
           <n-spin v-if="msg.streaming" size="small" style="margin-left: 8px; margin-top: 4px;" />
         </div>
       </div>
@@ -107,6 +119,7 @@ async function sendMessage() {
     streaming: true,
     thinkingCollapsed: false,
     toolCalls: [],
+    downloads: [],
   }
   messages.value.push(assistantMsg)
   const idx = messages.value.length - 1
@@ -156,12 +169,13 @@ async function sendMessage() {
             }
           }
           if (eventName && data) {
-            // 兼容 JSON 包装格式 {"t":"..."} 和裸字符串格式
+            // 兼容 JSON 格式和裸字符串格式
             let payload = data
             try {
               const parsed = JSON.parse(data)
               if (parsed.t !== undefined) payload = parsed.t
-            } catch (_) { /* 裸字符串，直接使用 */ }
+              else payload = parsed
+            } catch (_) { /* 裸字符串 */ }
             const cur = messages.value[idx]
             if (eventName === 'thinking') {
               cur.thinking += payload
@@ -170,6 +184,11 @@ async function sendMessage() {
               cur.thinking += '\n\n──  Calling: ' + payload + '  ──\n\n'
             } else if (eventName === 'message') {
               cur.content += payload
+            } else if (eventName === 'download') {
+              cur.downloads.push(payload)
+            } else if (eventName === 'error') {
+              cur.content += '\n\n> ⚠️ ' + payload
+              cur.streaming = false
             } else if (eventName === 'done') {
               cur.streaming = false
             }

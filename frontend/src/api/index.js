@@ -43,6 +43,10 @@ export function streamChat(message, endpoint = '/chat/v1/paper') {
   return chatFetch(endpoint, message)
 }
 
+export function checkHealth() {
+  return request('/health')
+}
+
 export function invokeChat(message, endpoint = '/chat/v1/paper/invoke') {
   return chatFetch(endpoint, message).then(res => {
     if (!res.ok) return res.text().then(t => { throw new Error(t) })

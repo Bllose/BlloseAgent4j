@@ -139,11 +139,13 @@ public class LangChain4jConfig {
 
     @Bean
     McpClient paperDownloadMcpClient() {
-        var transport = new StdioMcpTransport.Builder()
-                .command(mcpProperties.getPaperDownload().getCommand())
-                .build();
+        var transportBuilder = new StdioMcpTransport.Builder()
+                .command(mcpProperties.getPaperDownload().getCommand());
+        if (mcpProperties.getPaperDownload().getEnv() != null) {
+            transportBuilder.environment(mcpProperties.getPaperDownload().getEnv());
+        }
         return new DefaultMcpClient.Builder()
-                .transport(transport)
+                .transport(transportBuilder.build())
                 .key("paper-download")
                 .build();
     }
@@ -176,12 +178,14 @@ public class LangChain4jConfig {
             OpenAiStreamingChatModel model,
             OpenAiChatModel chatModel,
             ChatMemoryProvider chatMemoryProvider,
-            ToolProvider allMcpToolProvider) {
+            ToolProvider allMcpToolProvider,
+            com.bllose.agent.service.PaperToolService paperToolService) {
         return AiServices.builder(PaperAssistant.class)
                 .streamingChatModel(model)
                 .chatModel(chatModel)
                 .chatMemoryProvider(chatMemoryProvider)
                 .toolProvider(allMcpToolProvider)
+                .tools(paperToolService)
                 .build();
     }
 }

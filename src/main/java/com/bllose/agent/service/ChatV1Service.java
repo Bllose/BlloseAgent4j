@@ -1,6 +1,8 @@
 package com.bllose.agent.service;
 
 import dev.langchain4j.model.chat.response.PartialThinking;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -8,6 +10,8 @@ import java.io.IOException;
 
 @Service
 public class ChatV1Service {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatV1Service.class);
 
     private final StreamingAssistant assistant;
 
@@ -64,7 +68,28 @@ public class ChatV1Service {
                         emitter.completeWithError(e);
                     }
                 })
-                .onError(emitter::completeWithError)
+                .onError(error -> {
+                    log.error("Chat stream error", error);
+                    try {
+                        String msg = error.getMessage();
+                        if (msg != null && msg.contains("maxToolCallingRoundTrips")) {
+                            msg = "任务执行轮次超限（>100 轮），已自动终止。请简化问题后重试。";
+                        }
+                        emitter.send(
+                            SseEmitter.event()
+                                .name("error")
+                                .data(msg != null ? msg : "Unknown error")
+                        );
+                        emitter.send(
+                            SseEmitter.event()
+                                .name("done")
+                                .data("[DONE]")
+                        );
+                        emitter.complete();
+                    } catch (IOException e) {
+                        emitter.completeWithError(e);
+                    }
+                })
                 .start();
 
         return emitter;
