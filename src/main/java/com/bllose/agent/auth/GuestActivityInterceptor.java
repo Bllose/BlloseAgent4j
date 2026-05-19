@@ -52,6 +52,11 @@ public class GuestActivityInterceptor implements HandlerInterceptor {
         GuestSession guest = guestSessionRepository.findByLastSession(sessionId).orElse(null);
 
         if (guest != null) {
+            // backfill fingerprint_hash if missing
+            if ((guest.getFingerprintHash() == null || guest.getFingerprintHash().isBlank())
+                && fingerprint != null && !fingerprint.isBlank()) {
+                guest.setFingerprintHash(fingerprint);
+            }
             // check expiry (24h since last_login)
             if (guest.getLastLogin() != null && guest.getLastLogin().plusHours(24).isAfter(now)) {
                 // valid — count the request

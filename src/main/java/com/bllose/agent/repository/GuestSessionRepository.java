@@ -97,10 +97,11 @@ public class GuestSessionRepository {
 
     public void update(GuestSession gs) {
         jdbc.update(
-            "UPDATE guest_sessions SET last_login=?, auth_expiry=?, last_session=?, request_count=?, last_visits=?, updated_at=datetime('now') WHERE id=?",
+            "UPDATE guest_sessions SET last_login=?, auth_expiry=?, last_session=?, request_count=?, last_visits=?, fingerprint_hash=?, updated_at=datetime('now') WHERE id=?",
             gs.getLastLogin().toString(), gs.getAuthExpiry().toString(),
             gs.getLastSession(),
             gs.getRequestCount(), toVisitsJson(gs.getLastVisits()),
+            gs.getFingerprintHash(),
             gs.getId()
         );
     }

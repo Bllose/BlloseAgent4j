@@ -38,6 +38,10 @@ export function login(username, password) {
   return request('/auth/login', { method: 'POST', body: { username, password } })
 }
 
+export function helloGuest() {
+  return request('/auth/hello-guest')
+}
+
 export function guestLogin(fingerprintData) {
   return request('/auth/guest', { method: 'POST', body: fingerprintData })
 }

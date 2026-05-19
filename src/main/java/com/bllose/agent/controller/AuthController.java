@@ -37,6 +37,14 @@ public class AuthController {
         }
     }
 
+    @GetMapping("/hello-guest")
+    public ResponseEntity<?> helloGuest(HttpServletResponse response) {
+        AuthResponse auth = authService.helloGuest();
+        response.setHeader("X-Session-Id", auth.sessionId());
+        response.setHeader("Access-Control-Expose-Headers", "X-Session-Id");
+        return ResponseEntity.ok(auth);
+    }
+
     @PostMapping("/guest")
     public ResponseEntity<?> guest(@RequestBody GuestRequest req, HttpServletResponse response) {
         AuthResponse auth = authService.guestLogin(req);

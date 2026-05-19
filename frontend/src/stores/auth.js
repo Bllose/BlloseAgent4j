@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login as apiLogin, register as apiRegister, guestLogin as apiGuestLogin } from '../api'
+import { login as apiLogin, register as apiRegister, guestLogin as apiGuestLogin, helloGuest as apiHelloGuest } from '../api'
 import { generateFingerprint } from '../utils/fingerprint'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -34,7 +34,6 @@ export const useAuthStore = defineStore('auth', () => {
     guestInitializing.value = true
     try {
       const fp = await generateFingerprint()
-      // store fingerprint hash for fallback on chat requests
       localStorage.setItem('fingerprint', fp.fingerprint)
       const data = await apiGuestLogin(fp)
       sessionId.value = data.sessionId
@@ -50,7 +49,19 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function initGuestSession() {
     if (sessionId.value) return
-    await doGuestLogin()
+    try {
+      const data = await apiHelloGuest()
+      sessionId.value = data.sessionId
+      username.value = data.username
+      localStorage.setItem('sessionId', data.sessionId)
+      localStorage.setItem('username', data.username)
+      // generate fingerprint in background for subsequent X-Fingerprint fallback
+      generateFingerprint().then(fp => {
+        localStorage.setItem('fingerprint', fp.fingerprint)
+      }).catch(() => {})
+    } catch {
+      // silent fail
+    }
   }
 
   function logout() {

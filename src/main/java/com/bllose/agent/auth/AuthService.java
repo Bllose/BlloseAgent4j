@@ -93,6 +93,26 @@ public class AuthService {
         return new AuthResponse(newSessionId, guest.getGuestName());
     }
 
+    public AuthResponse helloGuest() {
+        String fingerprint = "anon-" + UUID.randomUUID();
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime expiry = now.plusHours(24);
+        String newSessionId = "guest-" + UUID.randomUUID();
+
+        GuestSession guest = new GuestSession();
+        guest.setFingerprint(fingerprint);
+        guest.setFingerprintHash("");
+        guest.setGuestName("Guest");
+        guest.setFirstLogin(now);
+        guest.setLastLogin(now);
+        guest.setAuthExpiry(expiry);
+        guest.setLastSession(newSessionId);
+        guest.setRequestCount(0);
+        guest.setLastVisits(List.of());
+        guestSessionRepository.save(guest);
+        return new AuthResponse(newSessionId, guest.getGuestName());
+    }
+
     private String buildFingerprint(GuestRequest req) {
         String ip = httpRequest.getRemoteAddr();
         return String.join("|",
