@@ -79,6 +79,15 @@ import { useMessage } from 'naive-ui'
 import { marked } from 'marked'
 import { streamChat, invokeChat } from '../api'
 
+marked.use({
+  renderer: {
+    link({ href, title, text }) {
+      const titleAttr = title ? ` title="${title}"` : ''
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`
+    }
+  }
+})
+
 const message = useMessage()
 const messages = ref([])
 const inputText = ref('')

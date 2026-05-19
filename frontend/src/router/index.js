@@ -31,10 +31,19 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
+let guestInitPromise = null
+
+router.beforeEach(async (to, from, next) => {
   const sessionId = localStorage.getItem('sessionId')
+
   if (to.meta.requiresAuth && !sessionId) {
-    next({ name: 'Login' })
+    // trigger guest session creation, then proceed
+    if (!guestInitPromise) {
+      const { useAuthStore } = await import('../stores/auth')
+      guestInitPromise = useAuthStore().initGuestSession()
+    }
+    await guestInitPromise
+    next()
   } else if (to.meta.guest && sessionId) {
     next({ name: 'Chat' })
   } else {
