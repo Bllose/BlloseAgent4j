@@ -11,6 +11,8 @@ log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+CONFIG_FILE="$PROJECT_ROOT/src/main/resources/application.yml"
+CONFIG_EXAMPLE="$PROJECT_ROOT/src/main/resources/application-example.yml"
 BACKEND_PID=""
 FRONTEND_PID=""
 
@@ -119,18 +121,20 @@ fi
 
 # 预下载 MiniMax MCP 依赖 (首次较慢，提前缓存避免启动超时)
 log_info "预热 MiniMax MCP 依赖 (首次可能需要几分钟)..."
-if timeout 10 uvx minimax-coding-plan-mcp 2>&1 | head -1 | grep -qi 'mcp'; then
+
+# 从 application.yml 读取 API Key 传入，确保预热即验证
+MM_KEY=$(grep 'MINIMAX_API_KEY:' "$CONFIG_FILE" 2>/dev/null | sed 's/.*MINIMAX_API_KEY: *//' | tr -d '\r' || true)
+
+if timeout 10 env MINIMAX_API_KEY="${MM_KEY:-}" uvx minimax-coding-plan-mcp 2>&1 | head -1 | grep -qi 'mcp'; then
     log_info "MiniMax MCP 已缓存 ✓"
 else
     log_warn "正在预下载 minimax-coding-plan-mcp，请稍候..."
-    timeout 30 uvx minimax-coding-plan-mcp 2>/dev/null || true
+    timeout 30 env MINIMAX_API_KEY="${MM_KEY:-}" uvx minimax-coding-plan-mcp 2>/dev/null || true
     log_info "MiniMax MCP 预下载完成 ✓"
 fi
 
 # --------------- 2. 配置文件 ---------------
 log_info "========== 配置文件检查 =========="
-CONFIG_FILE="$PROJECT_ROOT/src/main/resources/application.yml"
-CONFIG_EXAMPLE="$PROJECT_ROOT/src/main/resources/application-example.yml"
 
 if [ ! -f "$CONFIG_FILE" ]; then
     log_info "创建 application.yml (从 example 模板)..."
