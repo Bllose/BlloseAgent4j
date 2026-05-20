@@ -15,6 +15,11 @@
           {{ isRegister ? 'Register' : 'Login' }}
         </n-button>
       </n-form>
+      <div v-if="isRegister" style="margin-top: 12px;">
+        <n-button text block @click="goBackAsGuest">
+          不注册，直接使用
+        </n-button>
+      </div>
       <n-divider />
       <n-button text block @click="isRegister = !isRegister">
         {{ isRegister ? 'Already have an account? Login' : "Don't have an account? Register" }}
@@ -24,12 +29,13 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const message = useMessage()
 const authStore = useAuthStore()
 
@@ -49,15 +55,26 @@ const rules = {
   ]
 }
 
+onMounted(() => {
+  if (route.query.register === 'true') {
+    isRegister.value = true
+  }
+})
+
+function goBackAsGuest() {
+  router.push({ name: 'Chat' })
+}
+
 async function handleSubmit() {
   try {
     await formRef.value?.validate()
     loading.value = true
+    const fingerprint = localStorage.getItem('fingerprint') || ''
     if (isRegister.value) {
-      await authStore.doRegister(form.value.username, form.value.password)
+      await authStore.doRegister(form.value.username, form.value.password, fingerprint)
       message.success('Registration successful')
     } else {
-      await authStore.doLogin(form.value.username, form.value.password)
+      await authStore.doLogin(form.value.username, form.value.password, fingerprint)
       message.success('Login successful')
     }
     router.push({ name: 'Chat' })

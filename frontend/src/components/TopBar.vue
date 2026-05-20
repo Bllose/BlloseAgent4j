@@ -10,9 +10,12 @@
     >
       <n-tab-pane v-for="tab in tabs" :key="tab.key" :name="tab.key" :tab="tab.label" />
     </n-tabs>
-    <span style="margin-left: auto; color: var(--n-text-color-3); font-size: 14px;">
-      {{ username }}
-    </span>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+      <span style="color: var(--n-text-color-3); font-size: 14px;">{{ username }}</span>
+      <n-button v-if="username === 'Guest'" size="tiny" secondary @click="$router.push('/login?register=true')">
+        注册
+      </n-button>
+    </div>
   </n-header>
 </template>
 

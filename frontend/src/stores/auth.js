@@ -11,8 +11,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoggedIn = computed(() => !!sessionId.value)
   const isGuest = computed(() => username.value === 'Guest')
 
-  async function doLogin(user, pass) {
-    const data = await apiLogin(user, pass)
+  async function doLogin(user, pass, fingerprint = '') {
+    const data = await apiLogin(user, pass, fingerprint)
     sessionId.value = data.sessionId
     username.value = data.username
     localStorage.setItem('sessionId', data.sessionId)
@@ -20,8 +20,8 @@ export const useAuthStore = defineStore('auth', () => {
     return data
   }
 
-  async function doRegister(user, pass) {
-    const data = await apiRegister(user, pass)
+  async function doRegister(user, pass, fingerprint = '') {
+    const data = await apiRegister(user, pass, fingerprint)
     sessionId.value = data.sessionId
     username.value = data.username
     localStorage.setItem('sessionId', data.sessionId)

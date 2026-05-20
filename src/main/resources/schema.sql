@@ -49,6 +49,14 @@ CREATE TABLE IF NOT EXISTS paper_metadata (
 -- Ignored if column already exists (spring.sql.init.continue-on-error=true).
 ALTER TABLE paper_downloads ADD COLUMN source_url TEXT NOT NULL DEFAULT '';
 
+CREATE TABLE IF NOT EXISTS user_fingerprints (
+    user_id          INTEGER NOT NULL,
+    fingerprint_hash TEXT    NOT NULL,
+    created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, fingerprint_hash),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
 CREATE TABLE IF NOT EXISTS guest_sessions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     fingerprint     TEXT    NOT NULL UNIQUE,

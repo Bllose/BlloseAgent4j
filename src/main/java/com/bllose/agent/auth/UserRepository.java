@@ -38,4 +38,12 @@ public class UserRepository {
             "SELECT COUNT(*) FROM users WHERE username = ?", Integer.class, username);
         return count != null && count > 0;
     }
+
+    public void bindFingerprint(Long userId, String fingerprintHash) {
+        if (fingerprintHash == null || fingerprintHash.isBlank()) return;
+        // ignore if already bound
+        jdbc.update(
+            "INSERT OR IGNORE INTO user_fingerprints (user_id, fingerprint_hash) VALUES (?, ?)",
+            userId, fingerprintHash);
+    }
 }
