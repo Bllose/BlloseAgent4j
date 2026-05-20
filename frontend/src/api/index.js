@@ -30,12 +30,12 @@ async function request(path, { method = 'GET', body, headers = {} } = {}) {
   return res.json()
 }
 
-export function register(username, password) {
-  return request('/auth/register', { method: 'POST', body: { username, password } })
+export function register(username, password, fingerprint = '') {
+  return request('/auth/register', { method: 'POST', body: { username, password, fingerprint } })
 }
 
-export function login(username, password) {
-  return request('/auth/login', { method: 'POST', body: { username, password } })
+export function login(username, password, fingerprint = '') {
+  return request('/auth/login', { method: 'POST', body: { username, password, fingerprint } })
 }
 
 export function helloGuest() {
