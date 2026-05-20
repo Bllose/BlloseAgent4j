@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import com.bllose.agent.guard.GuardService;
 import com.bllose.agent.service.ChatV1Service;
 import com.bllose.agent.service.PaperService;
 
@@ -22,10 +23,12 @@ public class ChatV1Controller {
 
     private final ChatV1Service chatV1Service;
     private final PaperService paperService;
+    private final GuardService guardService;
 
-    public ChatV1Controller(ChatV1Service chatV1Service, PaperService paperService) {
+    public ChatV1Controller(ChatV1Service chatV1Service, PaperService paperService, GuardService guardService) {
         this.chatV1Service = chatV1Service;
         this.paperService = paperService;
+        this.guardService = guardService;
     }
 
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -35,6 +38,7 @@ public class ChatV1Controller {
         if (sessionId == null || sessionId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "MISSING_SESSION_ID");
         }
+        guardService.check(request.message(), sessionId);
         return chatV1Service.streamChat(sessionId, request.message());
     }
 
@@ -45,6 +49,7 @@ public class ChatV1Controller {
         if (sessionId == null || sessionId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "MISSING_SESSION_ID");
         }
+        guardService.check(request.message(), sessionId);
         return paperService.streamChat(sessionId, request.message());
     }
 
@@ -55,6 +60,7 @@ public class ChatV1Controller {
         if (sessionId == null || sessionId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "MISSING_SESSION_ID");
         }
+        guardService.check(request.message(), sessionId);
         String content = paperService.invokeChat(sessionId, request.message());
         return ResponseEntity.ok(Map.of("content", content));
     }
