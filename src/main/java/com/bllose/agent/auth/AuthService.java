@@ -40,6 +40,8 @@ public class AuthService {
         user.setUsername(req.username());
         user.setPassword(passwordEncoder.encode(req.password()));
         user = userRepository.save(user);
+        // bind fingerprint to the new user
+        userRepository.bindFingerprint(user.getId(), req.fingerprint());
         String sessionId = sessionManager.createSession(user.getId());
         return new AuthResponse(sessionId, user.getUsername());
     }
@@ -50,6 +52,8 @@ public class AuthService {
         if (!passwordEncoder.matches(req.password(), user.getPassword())) {
             throw new IllegalArgumentException("Invalid username or password");
         }
+        // bind fingerprint if provided (new device/browser)
+        userRepository.bindFingerprint(user.getId(), req.fingerprint());
         String sessionId = sessionManager.createSession(user.getId());
         return new AuthResponse(sessionId, user.getUsername());
     }
