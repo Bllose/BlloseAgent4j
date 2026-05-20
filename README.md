@@ -2,6 +2,8 @@
 
 基于 LangChain4j + MCP 协议的 AI 学术论文研究助手，支持多源元数据聚合、PDF 智能下载、SSE 流式对话，前端 Vue 3 + Naive UI 构建。  
 
+> 🚀 在线体验：[BlloseAgent4J](http://106.53.102.58/) · 无需部署，打开即用
+
 ![example](./resources/BlloseAgent4J_example.png)
 
 ## 技术亮点
