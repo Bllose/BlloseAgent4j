@@ -20,6 +20,11 @@
           不注册，直接使用
         </n-button>
       </div>
+      <div v-if="!isRegister" style="margin-top: 12px;">
+        <n-button text block @click="goBackAsGuest">
+          不登录，直接使用
+        </n-button>
+      </div>
       <n-divider />
       <n-button text block @click="isRegister = !isRegister">
         {{ isRegister ? 'Already have an account? Login' : "Don't have an account? Register" }}

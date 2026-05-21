@@ -15,6 +15,12 @@
       <n-button v-if="username === 'Guest'" size="tiny" secondary @click="goRegister">
         注册
       </n-button>
+      <n-button v-if="username === 'Guest'" size="tiny" secondary @click="goLogin">
+        登录
+      </n-button>
+      <n-button v-else-if="username" size="tiny" secondary @click="goLogout">
+        登出
+      </n-button>
     </div>
   </n-header>
 </template>
@@ -31,6 +37,16 @@ const username = ref(localStorage.getItem('username') || '')
 
 function goRegister() {
   router.push({ name: 'Login', query: { register: 'true' } })
+}
+
+function goLogin() {
+  router.push({ name: 'Login' })
+}
+
+async function goLogout() {
+  const { useAuthStore } = await import('../stores/auth')
+  useAuthStore().logout()
+  window.location.href = '/'
 }
 
 function ensureTab(key, label) {
