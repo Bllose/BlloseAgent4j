@@ -1,6 +1,6 @@
 <template>
   <div style="display: flex; flex-direction: column; height: 100%;">
-    <div ref="msgContainer" style="flex: 1; overflow-y: auto; padding: 8px;">
+    <div ref="msgContainer" style="flex: 1; overflow-y: auto; padding: 8px; position: relative;">
       <div v-for="(msg, idx) in messages" :key="idx" style="margin-bottom: 16px;">
         <div v-if="msg.role === 'user'" style="display: flex; justify-content: flex-end;">
           <n-card size="small" style="max-width: 70%; background: var(--n-color-target-checked);">
@@ -43,6 +43,32 @@
             </a>
           </div>
           <n-spin v-if="msg.streaming" size="small" style="margin-left: 8px; margin-top: 4px;" />
+        </div>
+      </div>
+      <div v-if="messages.length === 0" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 48px;">
+        <div style="text-align: center;">
+          <!-- Decorative icon with glow -->
+          <div style="position: relative; display: inline-block; margin-bottom: 20px;">
+            <div style="position: absolute; inset: -20px; background: radial-gradient(circle, rgba(102,126,234,0.15) 0%, transparent 70%); border-radius: 50%;"></div>
+            <span style="font-size: 52px; position: relative;">📚</span>
+          </div>
+          <p style="font-size: 24px; font-weight: 700; margin-bottom: 6px; color: var(--n-text-color); letter-spacing: 1px;">欢迎使用 Bllose 论文检索助手</p>
+          <p style="font-size: 14px; margin-bottom: 24px; color: var(--n-text-color-3);">告诉我你想了解的方向，我来帮你找论文</p>
+
+          <!-- Quick feature hints -->
+          <div style="display: flex; justify-content: center; gap: 24px; margin-bottom: 24px; font-size: 13px; color: var(--n-text-color-3);">
+            <div style="display: flex; align-items: center; gap: 6px;"><span>🔍</span> 智能检索</div>
+            <div style="display: flex; align-items: center; gap: 6px;"><span>📥</span> 论文下载</div>
+            <div style="display: flex; align-items: center; gap: 6px;"><span>📖</span> 元数据提取</div>
+          </div>
+
+          <!-- Example queries -->
+          <div style="display: inline-block; background: var(--n-color-target); border: 1px solid var(--n-border-color); border-radius: 10px; padding: 18px 28px; text-align: left; font-size: 14px; line-height: 2.2; color: var(--n-text-color-2);">
+            <div style="margin-bottom: 8px; font-weight: 600; color: var(--n-text-color-3); font-size: 13px; letter-spacing: 0.5px;">💡 试试这么说：</div>
+            <div>🔹 帮我找近五年关于<mark style="background: rgba(102,126,234,0.12); color: var(--n-color-target-checked); padding: 2px 6px; border-radius: 3px; font-weight: 500;">大语言模型注意力机制</mark>的论文</div>
+            <div>🔹 我想了解 <mark style="background: rgba(102,126,234,0.12); color: var(--n-color-target-checked); padding: 2px 6px; border-radius: 3px; font-weight: 500;">多模态学习</mark>的最新研究进展</div>
+            <div>🔹 有没有关于 <mark style="background: rgba(102,126,234,0.12); color: var(--n-color-target-checked); padding: 2px 6px; border-radius: 3px; font-weight: 500;">知识蒸馏</mark>的综述文章？</div>
+          </div>
         </div>
       </div>
       <div ref="bottomAnchor" />

@@ -44,7 +44,7 @@ router.beforeEach(async (to, from, next) => {
     }
     await guestInitPromise
     next()
-  } else if (to.meta.guest && sessionId) {
+  } else if (to.meta.guest && sessionId && to.query.register !== 'true') {
     next({ name: 'Chat' })
   } else {
     next()
