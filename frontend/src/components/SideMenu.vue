@@ -21,7 +21,7 @@
 import { ref, h, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { NIcon } from 'naive-ui'
-import { ChatbubblesOutline, LogOutOutline } from '@vicons/ionicons5'
+import { ChatbubblesOutline } from '@vicons/ionicons5'
 import { checkHealth } from '../api'
 
 const router = useRouter()
@@ -65,17 +65,11 @@ function statusLabel() {
 }
 
 const menuOptions = [
-  { label: 'Chat', key: 'Chat', icon: () => h(NIcon, null, { default: () => h(ChatbubblesOutline) }) },
-  { label: 'Logout', key: 'logout', icon: () => h(NIcon, null, { default: () => h(LogOutOutline) }) }
+  { label: 'Chat', key: 'Chat', icon: () => h(NIcon, null, { default: () => h(ChatbubblesOutline) }) }
 ]
 
 function onMenuSelect(key) {
-  if (key === 'logout') {
-    localStorage.clear()
-    router.push('/login')
-  } else {
-    activeKey.value = key
-    router.push({ name: key })
-  }
+  activeKey.value = key
+  router.push({ name: key })
 }
 </script>
