@@ -12,7 +12,7 @@
     </n-tabs>
     <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
       <span style="color: var(--n-text-color-3); font-size: 14px;">{{ username }}</span>
-      <n-button v-if="username === 'Guest'" size="tiny" secondary @click="$router.push('/login?register=true')">
+      <n-button v-if="username === 'Guest'" size="tiny" secondary @click="goRegister">
         注册
       </n-button>
     </div>
@@ -27,7 +27,11 @@ const router = useRouter()
 const route = useRoute()
 const tabs = ref([])
 const activeTab = ref('')
-const username = localStorage.getItem('username') || ''
+const username = ref(localStorage.getItem('username') || '')
+
+function goRegister() {
+  router.push({ name: 'Login', query: { register: 'true' } })
+}
 
 function ensureTab(key, label) {
   if (!tabs.value.find(t => t.key === key)) {
