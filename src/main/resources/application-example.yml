@@ -20,6 +20,11 @@ app:
     bCrypt-strength: 12
   cors:
     allowed-origin: http://localhost:5173
+  guard:
+    ollama:
+      base-url: http://localhost:11434
+      model: bllose-guard
+      timeout-seconds: 30
   mcp:
     paper-metadata:
       command:
