@@ -44,7 +44,8 @@ router.beforeEach(async (to, from, next) => {
     }
     await guestInitPromise
     next()
-  } else if (to.meta.guest && sessionId && to.query.register !== 'true') {
+  } else if (to.meta.guest && sessionId && !sessionId.startsWith('guest-')) {
+    // 已注册用户访问登录页 → 重定向回 Chat
     next({ name: 'Chat' })
   } else {
     next()
