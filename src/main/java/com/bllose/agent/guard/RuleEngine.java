@@ -7,9 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 @Component
 public class RuleEngine {
@@ -29,10 +27,8 @@ public class RuleEngine {
     void compilePatterns() {
         injectionPatterns = compile(config.getInjectionPatterns());
         technicalAttackPatterns = compile(config.getTechnicalAttackPatterns());
-        log.info("RuleEngine loaded: {} injection patterns, {} technical patterns, {} EN/{} CN whitelist keywords, maxInputLength={}",
+        log.info("RuleEngine loaded: {} injection patterns, {} technical patterns, maxInputLength={}",
             injectionPatterns.size(), technicalAttackPatterns.size(),
-            config.getGuest().getPaperWhitelistEn().size(),
-            config.getGuest().getPaperWhitelistCn().size(),
             config.getMaxInputLength());
     }
 
@@ -79,15 +75,6 @@ public class RuleEngine {
             return techResult;
         }
 
-        // ── 4. Guest 用户领域限制 ──
-        if (sessionId != null && sessionId.startsWith("guest-")) {
-            if (!isPaperRelated(trimmed)) {
-                log.info("Guest non-paper request blocked: session={}, message={}",
-                    sessionId, trimmed.substring(0, Math.min(100, trimmed.length())));
-                return GuardResult.block("Guest 用户仅限于论文检索、下载和学术研究相关问题");
-            }
-        }
-
         return GuardResult.allow();
     }
 
@@ -98,29 +85,5 @@ public class RuleEngine {
             }
         }
         return GuardResult.allow();
-    }
-
-    /**
-     * 判断用户输入是否与论文/学术相关。
-     * 规则层采用宽松策略：命中任一关键词即放行，未命中则拦截。
-     */
-    private boolean isPaperRelated(String input) {
-        String lower = input.toLowerCase();
-
-        for (String kw : config.getGuest().getPaperWhitelistEn()) {
-            if (lower.contains(kw)) {
-                return true;
-            }
-        }
-        for (String kw : config.getGuest().getPaperWhitelistCn()) {
-            if (lower.contains(kw)) {
-                return true;
-            }
-        }
-        // DOI pattern
-        if (lower.matches(".*\\b10\\.\\d{4,}/.{3,}\\b.*")) {
-            return true;
-        }
-        return false;
     }
 }
