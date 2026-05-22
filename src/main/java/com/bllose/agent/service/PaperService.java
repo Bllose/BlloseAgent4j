@@ -2,6 +2,7 @@ package com.bllose.agent.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -18,21 +19,29 @@ public class PaperService {
 
     private static final Logger log = LoggerFactory.getLogger(PaperService.class);
 
-    private final PaperAssistant assistant;
+    private final PaperAssistant registeredAssistant;
+    private final PaperAssistant guestAssistant;
 
     @Value("${app.download.dir:./downloads}")
     private String downloadDir;
 
-    public PaperService(PaperAssistant assistant) {
-        this.assistant = assistant;
+    public PaperService(PaperAssistant registeredAssistant,
+                        @Qualifier("guest") PaperAssistant guestAssistant) {
+        this.registeredAssistant = registeredAssistant;
+        this.guestAssistant = guestAssistant;
     }
 
     public String invokeChat(String sessionId, String userMessage) {
-        return assistant.chatInvoke(sessionId, userMessage);
+        PaperAssistant active = (sessionId != null && sessionId.startsWith("guest-"))
+                ? guestAssistant : registeredAssistant;
+        return active.chatInvoke(sessionId, userMessage);
     }
 
     public SseEmitter streamChat(String sessionId, String userMessage) {
         SseEmitter emitter = new SseEmitter(0L);
+
+        PaperAssistant active = (sessionId != null && sessionId.startsWith("guest-"))
+                ? guestAssistant : registeredAssistant;
 
         // Snapshot existing files so we can detect new downloads
         File downloadDirFile = Path.of(downloadDir).toAbsolutePath().normalize().toFile();
@@ -44,7 +53,7 @@ public class PaperService {
             }
         }
 
-        assistant.chat(sessionId, userMessage)
+        active.chat(sessionId, userMessage)
                 .onPartialThinking(thinking -> {
                     try {
                         log.debug("thinking(len={}): >>>{}<<<",
@@ -115,14 +124,11 @@ public class PaperService {
                 .onError(error -> {
                     log.error("Chat stream error", error);
                     try {
-                        String msg = error.getMessage();
-                        if (msg != null && msg.contains("maxToolCallingRoundTrips")) {
-                            msg = "任务执行轮次超限（>100 轮），已自动终止。请简化问题后重试。";
-                        }
+                        String msg = resolveErrorMessage(error);
                         emitter.send(
                             SseEmitter.event()
                                 .name("error")
-                                .data(msg != null ? msg : "Unknown error")
+                                .data(msg)
                         );
                         emitter.send(
                             SseEmitter.event()
@@ -137,5 +143,41 @@ public class PaperService {
                 .start();
 
         return emitter;
+    }
+
+    private String resolveErrorMessage(Throwable error) {
+        String msg = error.getMessage();
+        if (msg != null && msg.contains("maxToolCallingRoundTrips")) {
+            return "任务执行轮次超限（>100 轮），已自动终止。请简化问题后重试。";
+        }
+        if (isNetworkError(error)) {
+            return "网络开小差了，请检查网络，稍后再试";
+        }
+        return msg != null ? msg : "Unknown error";
+    }
+
+    private boolean isNetworkError(Throwable error) {
+        Throwable cause = error;
+        while (cause != null) {
+            String cn = cause.getClass().getName();
+            if (cn.contains("UnresolvedAddress")
+                    || cn.contains("ConnectException")
+                    || cn.contains("SocketException")
+                    || cn.contains("SSLException")
+                    || cn.contains("UnknownHost")
+                    || cn.contains("HttpTimeout")
+                    || cn.contains("ConnectTimeout")) {
+                return true;
+            }
+            String m = cause.getMessage();
+            if (m != null && (m.contains("Broken pipe")
+                    || m.contains("Connection reset")
+                    || m.contains("timeout")
+                    || m.contains("Network is unreachable"))) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 }
