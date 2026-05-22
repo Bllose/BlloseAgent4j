@@ -18,18 +18,23 @@
 </template>
 
 <script setup>
-import { ref, h, onMounted, onUnmounted } from 'vue'
+import { ref, h, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { NIcon } from 'naive-ui'
-import { ChatbubblesOutline } from '@vicons/ionicons5'
+import { ChatbubblesOutline, TimeOutline, AddCircleOutline } from '@vicons/ionicons5'
 import { checkHealth } from '../api'
+import { useAuthStore } from '../stores/auth'
+import { useConversationStore } from '../stores/conversation'
 
 const router = useRouter()
 const route = useRoute()
 const collapsed = ref(false)
 const activeKey = ref(route.name || 'Chat')
 
-const health = ref({ status: null }) // null=loading, 'UP'|'DEGRADED'|'DOWN'
+const auth = useAuthStore()
+const convStore = useConversationStore()
+
+const health = ref({ status: null })
 
 let timer = null
 
@@ -45,11 +50,18 @@ async function fetchHealth() {
 onMounted(() => {
   fetchHealth()
   timer = setInterval(fetchHealth, 30_000)
+  if (auth.isLoggedIn && !auth.isGuest) {
+    convStore.loadConversations()
+  }
 })
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
 })
+
+watch(() => auth.isLoggedIn && !auth.isGuest, (isReg) => {
+  if (isReg) convStore.loadConversations()
+}, { immediate: true })
 
 function dotColor() {
   if (health.value.status === 'UP') return '#18a058'
@@ -64,12 +76,37 @@ function statusLabel() {
   return '检测中...'
 }
 
-const menuOptions = [
-  { label: 'Chat', key: 'Chat', icon: () => h(NIcon, null, { default: () => h(ChatbubblesOutline) }) }
-]
+const menuOptions = computed(() => {
+  const items = [
+    { label: 'Chat', key: 'Chat', icon: () => h(NIcon, null, { default: () => h(ChatbubblesOutline) }) },
+    { label: '+ 新建会话', key: 'new-chat', icon: () => h(NIcon, null, { default: () => h(AddCircleOutline) }) },
+  ]
+  if (auth.isLoggedIn && !auth.isGuest && convStore.conversations.length > 0) {
+    items.push({ type: 'divider', key: 'conv-divider' })
+    for (const c of convStore.conversations) {
+      items.push({
+        label: c.title || '未命名对话',
+        key: `conv:${c.chatId}`,
+        icon: () => h(NIcon, null, { default: () => h(TimeOutline) })
+      })
+    }
+  }
+  return items
+})
 
 function onMenuSelect(key) {
   activeKey.value = key
-  router.push({ name: key })
+  if (key === 'new-chat') {
+    convStore.newConversation()
+    activeKey.value = 'Chat'
+    router.push({ name: 'Chat' })
+  } else if (key.startsWith('conv:')) {
+    const chatId = key.slice(5)
+    convStore.selectConversation(chatId)
+    router.push({ name: 'Chat' })
+  } else {
+    convStore.newConversation()
+    router.push({ name: key })
+  }
 }
 </script>

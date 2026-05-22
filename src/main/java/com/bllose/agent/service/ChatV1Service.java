@@ -1,5 +1,8 @@
 package com.bllose.agent.service;
 
+import com.bllose.agent.model.ChatMessage;
+import com.bllose.agent.model.Conversation;
+import com.bllose.agent.repository.ChatMessageRepository;
 import dev.langchain4j.model.chat.response.PartialThinking;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,22 +19,61 @@ public class ChatV1Service {
 
     private final StreamingAssistant registeredAssistant;
     private final StreamingAssistant guestAssistant;
+    private final ConversationService conversationService;
+    private final ChatMessageRepository chatMessageRepository;
 
     public ChatV1Service(StreamingAssistant registeredAssistant,
-                         @Qualifier("guest") StreamingAssistant guestAssistant) {
+                         @Qualifier("guest") StreamingAssistant guestAssistant,
+                         ConversationService conversationService,
+                         ChatMessageRepository chatMessageRepository) {
         this.registeredAssistant = registeredAssistant;
         this.guestAssistant = guestAssistant;
+        this.conversationService = conversationService;
+        this.chatMessageRepository = chatMessageRepository;
     }
 
-    public SseEmitter streamChat(String sessionId, String userMessage) {
+    public SseEmitter streamChat(String sessionId, String chatId, String userMessage, Integer userNumber) {
         SseEmitter emitter = new SseEmitter(0L);
 
-        StreamingAssistant active = (sessionId != null && sessionId.startsWith("guest-"))
-                ? guestAssistant : registeredAssistant;
+        boolean isGuest = sessionId != null && sessionId.startsWith("guest-");
+        StreamingAssistant active = isGuest ? guestAssistant : registeredAssistant;
 
-        active.chat(sessionId, userMessage)
+        // Resolve or create conversation for registered users
+        String memoryId;
+        final String resolvedChatId;
+        final int turnNum;
+        if (!isGuest && userNumber != null) {
+            Conversation conv = conversationService.getOrCreate(chatId, userNumber, userMessage);
+            resolvedChatId = conv.getChatId();
+            turnNum = conversationService.getNextTurnNum(resolvedChatId);
+            memoryId = resolvedChatId;
+
+            // Save user message
+            ChatMessage userMsg = new ChatMessage();
+            userMsg.setChatId(resolvedChatId);
+            userMsg.setTurnNum(turnNum);
+            userMsg.setType("user");
+            userMsg.setMessage(userMessage);
+            chatMessageRepository.save(userMsg);
+
+            // Emit chatId so frontend knows the conversation ID
+            try {
+                emitter.send(SseEmitter.event().name("chatId").data(resolvedChatId));
+            } catch (IOException ignored) {}
+        } else {
+            resolvedChatId = null;
+            turnNum = 1;
+            memoryId = sessionId;
+        }
+
+        // Accumulators for AI response
+        StringBuilder thinkingBuf = new StringBuilder();
+        StringBuilder messageBuf = new StringBuilder();
+
+        active.chat(memoryId, userMessage)
                 .onPartialThinking(thinking -> {
                     try {
+                        thinkingBuf.append(thinking.text());
                         emitter.send(
                             SseEmitter.event()
                                 .name("thinking")
@@ -54,6 +96,7 @@ public class ChatV1Service {
                 })
                 .onPartialResponse(token -> {
                     try {
+                        messageBuf.append(token);
                         emitter.send(
                             SseEmitter.event()
                                 .name("message")
@@ -65,6 +108,16 @@ public class ChatV1Service {
                 })
                 .onCompleteResponse(response -> {
                     try {
+                        // Persist AI message for registered users
+                        if (!isGuest && userNumber != null && resolvedChatId != null) {
+                            ChatMessage aiMsg = new ChatMessage();
+                            aiMsg.setChatId(resolvedChatId);
+                            aiMsg.setTurnNum(turnNum);
+                            aiMsg.setType("ai");
+                            aiMsg.setThinking(thinkingBuf.isEmpty() ? null : thinkingBuf.toString());
+                            aiMsg.setMessage(messageBuf.toString());
+                            chatMessageRepository.save(aiMsg);
+                        }
                         emitter.send(
                             SseEmitter.event()
                                 .name("done")

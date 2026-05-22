@@ -1,5 +1,8 @@
 package com.bllose.agent.service;
 
+import com.bllose.agent.model.ChatMessage;
+import com.bllose.agent.model.Conversation;
+import com.bllose.agent.repository.ChatMessageRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -21,27 +24,96 @@ public class PaperService {
 
     private final PaperAssistant registeredAssistant;
     private final PaperAssistant guestAssistant;
+    private final ConversationService conversationService;
+    private final ChatMessageRepository chatMessageRepository;
 
     @Value("${app.download.dir:./downloads}")
     private String downloadDir;
 
     public PaperService(PaperAssistant registeredAssistant,
-                        @Qualifier("guest") PaperAssistant guestAssistant) {
+                        @Qualifier("guest") PaperAssistant guestAssistant,
+                        ConversationService conversationService,
+                        ChatMessageRepository chatMessageRepository) {
         this.registeredAssistant = registeredAssistant;
         this.guestAssistant = guestAssistant;
+        this.conversationService = conversationService;
+        this.chatMessageRepository = chatMessageRepository;
     }
 
-    public String invokeChat(String sessionId, String userMessage) {
-        PaperAssistant active = (sessionId != null && sessionId.startsWith("guest-"))
-                ? guestAssistant : registeredAssistant;
-        return active.chatInvoke(sessionId, userMessage);
-    }
+    public Map<String, String> invokeChat(String sessionId, String chatId, String userMessage, Integer userNumber) {
+        boolean isGuest = sessionId != null && sessionId.startsWith("guest-");
+        PaperAssistant active = isGuest ? guestAssistant : registeredAssistant;
 
-    public SseEmitter streamChat(String sessionId, String userMessage) {
+        String memoryId;
+        final String resolvedChatId;
+        final int turnNum;
+        if (!isGuest && userNumber != null) {
+            Conversation conv = conversationService.getOrCreate(chatId, userNumber, userMessage);
+            resolvedChatId = conv.getChatId();
+            turnNum = conversationService.getNextTurnNum(resolvedChatId);
+            memoryId = resolvedChatId;
+
+            ChatMessage userMsg = new ChatMessage();
+            userMsg.setChatId(resolvedChatId);
+            userMsg.setTurnNum(turnNum);
+            userMsg.setType("user");
+            userMsg.setMessage(userMessage);
+            chatMessageRepository.save(userMsg);
+        } else {
+            resolvedChatId = null;
+            turnNum = 1;
+            memoryId = sessionId;
+        }
+
+        String response = active.chatInvoke(memoryId, userMessage);
+
+        if (!isGuest && userNumber != null && resolvedChatId != null) {
+            ChatMessage aiMsg = new ChatMessage();
+            aiMsg.setChatId(resolvedChatId);
+            aiMsg.setTurnNum(turnNum);
+            aiMsg.setType("ai");
+            aiMsg.setMessage(response);
+            chatMessageRepository.save(aiMsg);
+        }
+
+        return Map.of("content", response, "chatId", resolvedChatId != null ? resolvedChatId : "");
+    }
+    public SseEmitter streamChat(String sessionId, String chatId, String userMessage, Integer userNumber) {
         SseEmitter emitter = new SseEmitter(0L);
 
-        PaperAssistant active = (sessionId != null && sessionId.startsWith("guest-"))
-                ? guestAssistant : registeredAssistant;
+        boolean isGuest = sessionId != null && sessionId.startsWith("guest-");
+        PaperAssistant active = isGuest ? guestAssistant : registeredAssistant;
+
+        // Resolve or create conversation for registered users
+        String memoryId;
+        final String resolvedChatId;
+        final int turnNum;
+        if (!isGuest && userNumber != null) {
+            Conversation conv = conversationService.getOrCreate(chatId, userNumber, userMessage);
+            resolvedChatId = conv.getChatId();
+            turnNum = conversationService.getNextTurnNum(resolvedChatId);
+            memoryId = resolvedChatId;
+
+            // Save user message
+            ChatMessage userMsg = new ChatMessage();
+            userMsg.setChatId(resolvedChatId);
+            userMsg.setTurnNum(turnNum);
+            userMsg.setType("user");
+            userMsg.setMessage(userMessage);
+            chatMessageRepository.save(userMsg);
+
+            try {
+                emitter.send(SseEmitter.event().name("chatId").data(resolvedChatId));
+            } catch (IOException ignored) {}
+        } else {
+            resolvedChatId = null;
+            turnNum = 1;
+            memoryId = sessionId;
+        }
+
+        // Accumulators for AI response
+        StringBuilder thinkingBuf = new StringBuilder();
+        StringBuilder messageBuf = new StringBuilder();
 
         // Snapshot existing files so we can detect new downloads
         File downloadDirFile = Path.of(downloadDir).toAbsolutePath().normalize().toFile();
@@ -53,9 +125,10 @@ public class PaperService {
             }
         }
 
-        active.chat(sessionId, userMessage)
+        active.chat(memoryId, userMessage)
                 .onPartialThinking(thinking -> {
                     try {
+                        thinkingBuf.append(thinking.text());
                         log.debug("thinking(len={}): >>>{}<<<",
                                 thinking.text().length(), thinking.text());
                         emitter.send(
@@ -81,6 +154,7 @@ public class PaperService {
                 })
                 .onPartialResponse(token -> {
                     try {
+                        messageBuf.append(token);
                         log.debug("token(len={}): >>>{}<<<",
                                 token.length(), token);
                         emitter.send(
@@ -94,6 +168,16 @@ public class PaperService {
                 })
                 .onCompleteResponse(response -> {
                     try {
+                        // Persist AI message for registered users
+                        if (!isGuest && userNumber != null && resolvedChatId != null) {
+                            ChatMessage aiMsg = new ChatMessage();
+                            aiMsg.setChatId(resolvedChatId);
+                            aiMsg.setTurnNum(turnNum);
+                            aiMsg.setType("ai");
+                            aiMsg.setThinking(thinkingBuf.isEmpty() ? null : thinkingBuf.toString());
+                            aiMsg.setMessage(messageBuf.toString());
+                            chatMessageRepository.save(aiMsg);
+                        }
                         // Emit download links for any new files
                         File[] afterFiles = downloadDirFile.listFiles();
                         if (afterFiles != null) {

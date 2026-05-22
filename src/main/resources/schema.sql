@@ -1,9 +1,14 @@
 CREATE TABLE IF NOT EXISTS users (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    username   TEXT    NOT NULL UNIQUE,
-    password   TEXT    NOT NULL,
-    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    username    TEXT    NOT NULL UNIQUE,
+    password    TEXT    NOT NULL,
+    user_number INTEGER,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Populate user_number for existing users
+ALTER TABLE users ADD COLUMN user_number INTEGER;
+UPDATE users SET user_number = 100000 + id WHERE user_number IS NULL;
 
 CREATE TABLE IF NOT EXISTS paper_downloads (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,3 +76,24 @@ CREATE TABLE IF NOT EXISTS guest_sessions (
     created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS conversations (
+    chat_id     TEXT NOT NULL PRIMARY KEY,
+    user_number INTEGER NOT NULL,
+    title       TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_number) REFERENCES users(user_number)
+);
+CREATE INDEX IF NOT EXISTS idx_conv_user ON conversations(user_number, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id     TEXT NOT NULL,
+    turn_num    INTEGER NOT NULL,
+    type        TEXT NOT NULL CHECK(type IN ('user', 'ai')),
+    thinking    TEXT,
+    message     TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (chat_id) REFERENCES conversations(chat_id)
+);
+CREATE INDEX IF NOT EXISTS idx_msg_chat ON chat_messages(chat_id, turn_num);
