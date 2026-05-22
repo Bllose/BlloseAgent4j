@@ -26,14 +26,20 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
 const route = useRoute()
+const auth = useAuthStore()
 const tabs = ref([])
 const activeTab = ref('')
-const username = ref(localStorage.getItem('username') || '')
+const username = ref(auth.username || '')
+
+watch(() => auth.username, (val) => {
+  username.value = val || ''
+})
 
 function goRegister() {
   router.push({ name: 'Login', query: { register: 'true' } })
@@ -44,8 +50,7 @@ function goLogin() {
 }
 
 async function goLogout() {
-  const { useAuthStore } = await import('../stores/auth')
-  useAuthStore().logout()
+  auth.logout()
   window.location.href = '/'
 }
 

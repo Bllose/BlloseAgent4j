@@ -6,14 +6,16 @@ public class User {
     private Long id;
     private String username;
     private String password;
+    private Integer userNumber;
     private LocalDateTime createdAt;
 
     public User() {}
 
-    public User(Long id, String username, String password, LocalDateTime createdAt) {
+    public User(Long id, String username, String password, Integer userNumber, LocalDateTime createdAt) {
         this.id = id;
         this.username = username;
         this.password = password;
+        this.userNumber = userNumber;
         this.createdAt = createdAt;
     }
 
@@ -23,6 +25,8 @@ public class User {
     public void setUsername(String username) { this.username = username; }
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
+    public Integer getUserNumber() { return userNumber; }
+    public void setUserNumber(Integer userNumber) { this.userNumber = userNumber; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }

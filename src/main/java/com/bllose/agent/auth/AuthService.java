@@ -42,8 +42,8 @@ public class AuthService {
         user = userRepository.save(user);
         // bind fingerprint to the new user
         userRepository.bindFingerprint(user.getId(), req.fingerprint());
-        String sessionId = sessionManager.createSession(user.getId());
-        return new AuthResponse(sessionId, user.getUsername());
+        String sessionId = sessionManager.createSession(user.getId(), user.getUserNumber());
+        return new AuthResponse(sessionId, user.getUsername(), user.getUserNumber());
     }
 
     public AuthResponse login(AuthRequest req) {
@@ -54,8 +54,8 @@ public class AuthService {
         }
         // bind fingerprint if provided (new device/browser)
         userRepository.bindFingerprint(user.getId(), req.fingerprint());
-        String sessionId = sessionManager.createSession(user.getId());
-        return new AuthResponse(sessionId, user.getUsername());
+        String sessionId = sessionManager.createSession(user.getId(), user.getUserNumber());
+        return new AuthResponse(sessionId, user.getUsername(), user.getUserNumber());
     }
 
     public AuthResponse guestLogin(GuestRequest req) {
@@ -70,7 +70,7 @@ public class AuthService {
             if (guest.getLastLogin() != null && guest.getLastLogin().plusHours(24).isAfter(now)
                 && guest.getLastSession() != null && !guest.getLastSession().isBlank()) {
                 // session still valid, reuse it
-                return new AuthResponse(guest.getLastSession(), guest.getGuestName());
+                return new AuthResponse(guest.getLastSession(), guest.getGuestName(), null);
             }
             // expired — generate new session
             String newSessionId = "guest-" + UUID.randomUUID();
@@ -78,7 +78,7 @@ public class AuthService {
             guest.setAuthExpiry(expiry);
             guest.setLastSession(newSessionId);
             guestSessionRepository.update(guest);
-            return new AuthResponse(newSessionId, guest.getGuestName());
+            return new AuthResponse(newSessionId, guest.getGuestName(), null);
         }
 
         // new guest
@@ -94,7 +94,7 @@ public class AuthService {
         guest.setRequestCount(0);
         guest.setLastVisits(List.of());
         guestSessionRepository.save(guest);
-        return new AuthResponse(newSessionId, guest.getGuestName());
+        return new AuthResponse(newSessionId, guest.getGuestName(), null);
     }
 
     public AuthResponse helloGuest() {
@@ -114,7 +114,7 @@ public class AuthService {
         guest.setRequestCount(0);
         guest.setLastVisits(List.of());
         guestSessionRepository.save(guest);
-        return new AuthResponse(newSessionId, guest.getGuestName());
+        return new AuthResponse(newSessionId, guest.getGuestName(), null);
     }
 
     private String buildFingerprint(GuestRequest req) {

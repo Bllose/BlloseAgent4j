@@ -1,6 +1,7 @@
 package com.bllose.agent.controller;
 
 import com.bllose.agent.auth.AuthService;
+import com.bllose.agent.auth.SessionManager;
 import com.bllose.agent.model.AuthRequest;
 import com.bllose.agent.model.AuthResponse;
 import com.bllose.agent.model.GuestRequest;
@@ -10,13 +11,30 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
     private final AuthService authService;
+    private final SessionManager sessionManager;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, SessionManager sessionManager) {
         this.authService = authService;
+        this.sessionManager = sessionManager;
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<?> me(@RequestHeader(value = "X-Session-Id", required = false) String sessionId) {
+        if (sessionId == null || sessionId.isBlank() || sessionId.startsWith("guest-")) {
+            return ResponseEntity.ok(Map.of("valid", false, "reason", "no session"));
+        }
+        Integer userNumber = sessionManager.getUserNumber(sessionId);
+        if (userNumber == null || userNumber == 0) {
+            return ResponseEntity.ok(Map.of("valid", false, "reason", "session expired"));
+        }
+        Long userId = sessionManager.getUserId(sessionId);
+        return ResponseEntity.ok(Map.of("valid", true, "userId", userId, "userNumber", userNumber));
     }
 
     @PostMapping("/register")
