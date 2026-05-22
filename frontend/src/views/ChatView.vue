@@ -23,7 +23,7 @@
             <div
               v-show="!msg.thinkingCollapsed"
               style="font-size: 13px; line-height: 1.6; color: var(--n-text-color-3); white-space: pre-wrap; border-left: 3px solid #f0a020; padding: 8px 12px; background: var(--n-color-target); border-radius: 0 4px 4px 0; max-height: 400px; overflow-y: auto;"
-            >{{ msg.thinking }}</div>
+            >{{ displayThinking(msg.thinking) }}</div>
           </div>
           <!-- Response section -->
           <n-card v-if="msg.content" size="small" style="max-width: 100%;">
@@ -216,7 +216,6 @@ async function sendMessage() {
               cur.thinking += payload
             } else if (eventName === 'tool') {
               cur.toolCalls.push(payload)
-              cur.thinking += '\n\n──  Calling: ' + payload + '  ──\n\n'
             } else if (eventName === 'message') {
               cur.content += payload
             } else if (eventName === 'download') {
@@ -226,6 +225,8 @@ async function sendMessage() {
               cur.streaming = false
             } else if (eventName === 'done') {
               cur.streaming = false
+              cur.thinking = cleanupThinking(cur.thinking)
+              cur.content = normalizeContent(cur.content)
             }
           }
         }
@@ -247,6 +248,27 @@ async function sendMessage() {
     abortController = null
     scrollToBottom()
   }
+}
+
+function cleanupThinking(text) {
+  if (!text) return ''
+  // Remove lines that are box-drawing separator or tool-call markers
+  let filtered = text.replace(/^\s*[─━═]+.*[─━═]+\s*$/gm, '')
+  // Remove lines that are purely box-drawing separators
+  filtered = filtered.replace(/^\s*[─━═]{3,}\s*$/gm, '')
+  // Collapse 3+ newlines to at most 2
+  filtered = filtered.replace(/\n{3,}/g, '\n\n')
+  return filtered.trim()
+}
+
+function displayThinking(text) {
+  return cleanupThinking(text)
+}
+
+function normalizeContent(text) {
+  if (!text) return ''
+  // Collapse 3+ newlines to 2, preserving markdown paragraph separation
+  return text.replace(/\n{3,}/g, '\n\n')
 }
 
 function renderContent(text) {
