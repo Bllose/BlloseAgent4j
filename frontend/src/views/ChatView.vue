@@ -1,7 +1,7 @@
 <template>
   <div style="display: flex; flex-direction: column; height: 100%;">
     <div ref="msgContainer" style="flex: 1; overflow-y: auto; padding: 8px; position: relative;">
-      <div v-for="(msg, idx) in messages" :key="idx" style="margin-bottom: 16px;">
+      <div v-for="(msg, idx) in convStore.messages" :key="idx" style="margin-bottom: 16px;">
         <div v-if="msg.role === 'user'" style="display: flex; justify-content: flex-end;">
           <n-card size="small" style="max-width: 70%; background: var(--n-color-target-checked);">
             {{ msg.content }}
@@ -43,9 +43,15 @@
             </a>
           </div>
           <n-spin v-if="msg.streaming" size="small" style="margin-left: 8px; margin-top: 4px;" />
+          <FeedbackButtons
+            v-if="!msg.streaming && msg.turnNum && convStore.currentChatId"
+            :chat-id="convStore.currentChatId"
+            :turn-num="msg.turnNum"
+            :readonly="msg.isHistory || false"
+          />
         </div>
       </div>
-      <div v-if="messages.length === 0" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 48px;">
+      <div v-if="convStore.messages.length === 0" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 48px;">
         <div style="text-align: center;">
           <!-- Decorative icon with glow -->
           <div style="position: relative; display: inline-block; margin-bottom: 20px;">
@@ -104,6 +110,8 @@ import { ref, nextTick, onBeforeUnmount } from 'vue'
 import { useMessage } from 'naive-ui'
 import { marked } from 'marked'
 import { streamChat, invokeChat } from '../api'
+import { useConversationStore } from '../stores/conversation'
+import FeedbackButtons from '../components/FeedbackButtons.vue'
 
 marked.use({
   renderer: {
@@ -115,7 +123,7 @@ marked.use({
 })
 
 const message = useMessage()
-const messages = ref([])
+const convStore = useConversationStore()
 const inputText = ref('')
 const isStreaming = ref(false)
 const msgContainer = ref(null)
@@ -144,7 +152,7 @@ async function sendMessage() {
   if (!text || isStreaming.value) return
   inputText.value = ''
 
-  messages.value.push({ role: 'user', content: text })
+  convStore.messages.push({ role: 'user', content: text })
   scrollToBottom()
 
   const assistantMsg = {
@@ -155,9 +163,11 @@ async function sendMessage() {
     thinkingCollapsed: false,
     toolCalls: [],
     downloads: [],
+    turnNum: null,
+    isHistory: false,
   }
-  messages.value.push(assistantMsg)
-  const idx = messages.value.length - 1
+  convStore.messages.push(assistantMsg)
+  const idx = convStore.messages.length - 1
   scrollToBottom()
 
   isStreaming.value = true
@@ -167,12 +177,13 @@ async function sendMessage() {
 
   try {
     if (ep.mode === 'invoke') {
-      // ── Non-streaming (invoke) path ──
-      const data = await invokeChat(text, ep.value)
-      messages.value[idx].content = data.content || ''
+      const data = await invokeChat(text, ep.value, convStore.currentChatId)
+      convStore.messages[idx].content = data.content || ''
+      convStore.messages[idx].streaming = false
+      convStore.messages[idx].turnNum = data.turnNum ? parseInt(data.turnNum) : null
+      if (data.chatId) convStore.setChatId(data.chatId)
     } else {
-      // ── Streaming (SSE) path ──
-      const response = await streamChat(text, ep.value)
+      const response = await streamChat(text, ep.value, convStore.currentChatId)
       if (!response.ok) {
         const errText = await response.text()
         throw new Error(errText || 'Stream failed')
@@ -204,15 +215,17 @@ async function sendMessage() {
             }
           }
           if (eventName && data) {
-            // 兼容 JSON 格式和裸字符串格式
             let payload = data
             try {
               const parsed = JSON.parse(data)
               if (parsed.t !== undefined) payload = parsed.t
               else payload = parsed
             } catch (_) { /* 裸字符串 */ }
-            const cur = messages.value[idx]
-            if (eventName === 'thinking') {
+            const cur = convStore.messages[idx]
+            if (eventName === 'chatId') {
+              console.log('[ChatView] SSE chatId:', payload, 'type:', typeof payload)
+              convStore.setChatId(payload)
+            } else if (eventName === 'thinking') {
               cur.thinking += payload
             } else if (eventName === 'tool') {
               cur.toolCalls.push(payload)
@@ -227,6 +240,11 @@ async function sendMessage() {
               cur.streaming = false
               cur.thinking = cleanupThinking(cur.thinking)
               cur.content = normalizeContent(cur.content)
+              console.log('[ChatView] SSE done payload:', payload, 'turnNum:', payload?.turnNum, 'currentChatId:', convStore.currentChatId)
+              if (payload && payload.turnNum) {
+                cur.turnNum = payload.turnNum
+                console.log('[ChatView] set turnNum to:', cur.turnNum)
+              }
             }
           }
         }
@@ -236,13 +254,13 @@ async function sendMessage() {
   } catch (e) {
     if (e.name !== 'AbortError') {
       message.error(e.message || 'Chat error')
-      if (messages.value[idx]) {
-        messages.value[idx].content += ' [Error: ' + (e.message || 'unknown') + ']'
+      if (convStore.messages[idx]) {
+        convStore.messages[idx].content += ' [Error: ' + (e.message || 'unknown') + ']'
       }
     }
   } finally {
-    if (messages.value[idx]) {
-      messages.value[idx].streaming = false
+    if (convStore.messages[idx]) {
+      convStore.messages[idx].streaming = false
     }
     isStreaming.value = false
     abortController = null
@@ -252,11 +270,8 @@ async function sendMessage() {
 
 function cleanupThinking(text) {
   if (!text) return ''
-  // Remove lines that are box-drawing separator or tool-call markers
   let filtered = text.replace(/^\s*[─━═]+.*[─━═]+\s*$/gm, '')
-  // Remove lines that are purely box-drawing separators
   filtered = filtered.replace(/^\s*[─━═]{3,}\s*$/gm, '')
-  // Collapse 3+ newlines to at most 2
   filtered = filtered.replace(/\n{3,}/g, '\n\n')
   return filtered.trim()
 }
@@ -267,15 +282,11 @@ function displayThinking(text) {
 
 function normalizeContent(text) {
   if (!text) return ''
-  // Collapse 3+ newlines to 2, preserving markdown paragraph separation
   return text.replace(/\n{3,}/g, '\n\n')
 }
 
 function renderContent(text) {
-  // Fix common LLM markdown formatting issues:
-  // 1. Ensure space after # for ATX headings (##text → ## text)
   let fixed = text.replace(/^(#{1,6})([^\s#])/gm, '$1 $2')
-  // 2. Ensure blank line before table rows so marked can detect them
   fixed = fixed.replace(/([^\n|])\n(\|[^\n]+\|)/g, '$1\n\n$2')
   return marked.parse(fixed)
 }

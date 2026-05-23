@@ -9,16 +9,24 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class SessionManager {
 
-    private final Map<String, Long> sessions = new ConcurrentHashMap<>();
+    private record SessionInfo(Long userId, Integer userNumber) {}
 
-    public String createSession(Long userId) {
+    private final Map<String, SessionInfo> sessions = new ConcurrentHashMap<>();
+
+    public String createSession(Long userId, Integer userNumber) {
         String sessionId = UUID.randomUUID().toString();
-        sessions.put(sessionId, userId);
+        sessions.put(sessionId, new SessionInfo(userId, userNumber));
         return sessionId;
     }
 
     public Long getUserId(String sessionId) {
-        return sessions.get(sessionId);
+        SessionInfo info = sessions.get(sessionId);
+        return info != null ? info.userId() : null;
+    }
+
+    public Integer getUserNumber(String sessionId) {
+        SessionInfo info = sessions.get(sessionId);
+        return info != null ? info.userNumber() : null;
     }
 
     public void removeSession(String sessionId) {

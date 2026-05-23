@@ -116,15 +116,15 @@ public class LangChain4jConfig {
     }
 
     @Bean
-    ChatMemoryProvider chatMemoryProvider() {
-        return memoryId -> MessageWindowChatMemory.withMaxMessages(maxMessages);
+    TrackedChatMemoryProvider chatMemoryProvider() {
+        return new TrackedChatMemoryProvider(maxMessages);
     }
 
     @Primary
     @Bean
     StreamingAssistant streamingAssistant(
             OpenAiStreamingChatModel model,
-            ChatMemoryProvider chatMemoryProvider,
+            TrackedChatMemoryProvider chatMemoryProvider,
             ToolProvider allMcpToolProvider) {
         return AiServices.builder(StreamingAssistant.class)
                 .streamingChatModel(model)
@@ -204,7 +204,7 @@ public class LangChain4jConfig {
     @Qualifier("guest")
     StreamingAssistant guestStreamingAssistant(
             OpenAiStreamingChatModel model,
-            ChatMemoryProvider chatMemoryProvider,
+            TrackedChatMemoryProvider chatMemoryProvider,
             ToolProvider paperOnlyMcpToolProvider) {
         return AiServices.builder(StreamingAssistant.class)
                 .streamingChatModel(model)
@@ -237,7 +237,7 @@ public class LangChain4jConfig {
     PaperAssistant paperAssistant(
             OpenAiStreamingChatModel model,
             OpenAiChatModel chatModel,
-            ChatMemoryProvider chatMemoryProvider,
+            TrackedChatMemoryProvider chatMemoryProvider,
             ToolProvider allMcpToolProvider,
             com.bllose.agent.service.PaperToolService paperToolService) {
         return AiServices.builder(PaperAssistant.class)
@@ -254,7 +254,7 @@ public class LangChain4jConfig {
     PaperAssistant guestPaperAssistant(
             OpenAiStreamingChatModel model,
             OpenAiChatModel chatModel,
-            ChatMemoryProvider chatMemoryProvider,
+            TrackedChatMemoryProvider chatMemoryProvider,
             ToolProvider paperOnlyMcpToolProvider,
             com.bllose.agent.service.PaperToolService paperToolService) {
         return AiServices.builder(PaperAssistant.class)

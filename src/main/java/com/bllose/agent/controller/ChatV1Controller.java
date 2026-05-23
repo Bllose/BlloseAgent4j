@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import com.bllose.agent.auth.SessionManager;
 import com.bllose.agent.guard.GuardService;
 import com.bllose.agent.service.ChatV1Service;
 import com.bllose.agent.service.PaperService;
@@ -24,11 +25,14 @@ public class ChatV1Controller {
     private final ChatV1Service chatV1Service;
     private final PaperService paperService;
     private final GuardService guardService;
+    private final SessionManager sessionManager;
 
-    public ChatV1Controller(ChatV1Service chatV1Service, PaperService paperService, GuardService guardService) {
+    public ChatV1Controller(ChatV1Service chatV1Service, PaperService paperService,
+                            GuardService guardService, SessionManager sessionManager) {
         this.chatV1Service = chatV1Service;
         this.paperService = paperService;
         this.guardService = guardService;
+        this.sessionManager = sessionManager;
     }
 
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -39,7 +43,8 @@ public class ChatV1Controller {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "MISSING_SESSION_ID");
         }
         guardService.check(request.message(), sessionId);
-        return chatV1Service.streamChat(sessionId, request.message());
+        Integer userNumber = sessionManager.getUserNumber(sessionId);
+        return chatV1Service.streamChat(sessionId, request.chatId(), request.message(), userNumber);
     }
 
     @PostMapping(value = "/paper", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -50,7 +55,8 @@ public class ChatV1Controller {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "MISSING_SESSION_ID");
         }
         guardService.check(request.message(), sessionId);
-        return paperService.streamChat(sessionId, request.message());
+        Integer userNumber = sessionManager.getUserNumber(sessionId);
+        return paperService.streamChat(sessionId, request.chatId(), request.message(), userNumber);
     }
 
     @PostMapping(value = "/paper/invoke", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -61,9 +67,10 @@ public class ChatV1Controller {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "MISSING_SESSION_ID");
         }
         guardService.check(request.message(), sessionId);
-        String content = paperService.invokeChat(sessionId, request.message());
-        return ResponseEntity.ok(Map.of("content", content));
+        Integer userNumber = sessionManager.getUserNumber(sessionId);
+        Map<String, String> result = paperService.invokeChat(sessionId, request.chatId(), request.message(), userNumber);
+        return ResponseEntity.ok(result);
     }
 
-    public record ChatV1Request(String message) {}
+    public record ChatV1Request(String message, String chatId) {}
 }
