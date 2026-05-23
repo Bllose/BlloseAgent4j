@@ -37,7 +37,7 @@ export const useConversationStore = defineStore('conversation', () => {
       const msgs = []
       for (const m of data) {
         if (m.type === 'user') {
-          msgs.push({ role: 'user', content: m.message })
+          msgs.push({ role: 'user', content: m.message, turnNum: m.turnNum })
         } else {
           msgs.push({
             role: 'assistant',
@@ -47,6 +47,8 @@ export const useConversationStore = defineStore('conversation', () => {
             thinkingCollapsed: true,
             toolCalls: [],
             downloads: [],
+            turnNum: m.turnNum,
+            isHistory: true,
           })
         }
       }

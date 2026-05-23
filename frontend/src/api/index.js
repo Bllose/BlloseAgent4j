@@ -94,3 +94,19 @@ export function updateConversationTitle(chatId, title) {
 export function validateSession() {
   return request('/auth/me')
 }
+
+export function getFeedback(chatId, turnNum) {
+  return request(`/feedback/${chatId}/${turnNum}`)
+}
+
+export function updateRating(chatId, turnNum, rating) {
+  return request(`/feedback/${chatId}/${turnNum}/rating`, {
+    method: 'PUT', body: { rating }
+  })
+}
+
+export function updateFeedbackText(chatId, turnNum, feedbackText) {
+  return request(`/feedback/${chatId}/${turnNum}/text`, {
+    method: 'PUT', body: { feedbackText }
+  })
+}

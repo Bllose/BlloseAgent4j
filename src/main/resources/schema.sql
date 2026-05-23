@@ -97,3 +97,18 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     FOREIGN KEY (chat_id) REFERENCES conversations(chat_id)
 );
 CREATE INDEX IF NOT EXISTS idx_msg_chat ON chat_messages(chat_id, turn_num);
+
+CREATE TABLE IF NOT EXISTS message_feedback (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id         TEXT NOT NULL,
+    turn_num        INTEGER NOT NULL,
+    user_identifier TEXT NOT NULL,
+    user_type       TEXT NOT NULL CHECK(user_type IN ('registered', 'guest')),
+    rating          TEXT CHECK(rating IN ('up', 'down')),
+    feedback_text   TEXT,
+    message_history TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (chat_id) REFERENCES conversations(chat_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_ck ON message_feedback(chat_id, turn_num);
