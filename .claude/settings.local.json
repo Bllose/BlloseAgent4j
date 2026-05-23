@@ -3,7 +3,23 @@
     "allow": [
       "Bash(java -version)",
       "Bash(mvn -version)",
-      "Bash(mvn compile *)"
+      "Bash(mvn compile *)",
+      "Bash(git stash *)",
+      "Bash(git fetch *)",
+      "Bash(cmd //c \"taskkill /F /IM java.exe 2>nul & taskkill /F /IM node.exe 2>nul\")",
+      "Bash(cmd *)",
+      "Bash(awk '{print $5}')",
+      "Bash(xargs -r kill -9)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git pull *)",
+      "Bash(gh auth *)",
+      "Bash(git remote *)",
+      "Bash(git branch *)",
+      "Bash(git checkout *)",
+      "Bash(git reset *)",
+      "Bash(git rebase *)"
     ]
   }
 }
