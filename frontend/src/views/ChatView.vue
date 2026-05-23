@@ -78,6 +78,21 @@
         </div>
       </div>
       <div ref="bottomAnchor" />
+      <div
+        v-if="showScrollBtn"
+        @click="scrollToBottom(true)"
+        style="position: sticky; bottom: 16px; display: flex; justify-content: center; pointer-events: none;"
+      >
+        <n-button
+          type="primary"
+          size="small"
+          circle
+          style="pointer-events: auto; box-shadow: 0 2px 8px rgba(0,0,0,0.15);"
+          title="回到底部"
+        >
+          ▼
+        </n-button>
+      </div>
     </div>
 
     <div style="border-top: 1px solid var(--n-border-color); padding: 12px; display: flex; gap: 10px; align-items: flex-end;">
@@ -92,6 +107,7 @@
         style="flex: 1;"
       />
       <n-select
+        v-if="windowWidth >= 768"
         v-model:value="selectedEndpoint"
         :options="endpoints"
         :disabled="isStreaming"
@@ -106,7 +122,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onBeforeUnmount } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useMessage } from 'naive-ui'
 import { marked } from 'marked'
 import { streamChat, invokeChat } from '../api'
@@ -130,6 +146,23 @@ const msgContainer = ref(null)
 const bottomAnchor = ref(null)
 let abortController = null
 
+const windowWidth = ref(window.innerWidth)
+const showScrollBtn = ref(false)
+
+function onResize() { windowWidth.value = window.innerWidth }
+function onContainerScroll() {
+  showScrollBtn.value = isStreaming.value && !isNearBottom()
+}
+
+onMounted(() => {
+  window.addEventListener('resize', onResize)
+  msgContainer.value?.addEventListener('scroll', onContainerScroll)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onResize)
+  msgContainer.value?.removeEventListener('scroll', onContainerScroll)
+})
+
 const endpoints = [
   { label: 'Paper (流式)', value: '/chat/v1/paper', mode: 'stream' },
   { label: 'Paper (非流式)', value: '/chat/v1/paper/invoke', mode: 'invoke' },
@@ -137,7 +170,14 @@ const endpoints = [
 ]
 const selectedEndpoint = ref(endpoints[0].value)
 
-function scrollToBottom() {
+function isNearBottom() {
+  const el = msgContainer.value
+  if (!el) return true
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 80
+}
+
+function scrollToBottom(force = false) {
+  if (!force && !isNearBottom()) return
   nextTick(() => {
     bottomAnchor.value?.scrollIntoView({ behavior: 'smooth' })
   })
@@ -153,14 +193,14 @@ async function sendMessage() {
   inputText.value = ''
 
   convStore.messages.push({ role: 'user', content: text })
-  scrollToBottom()
+  scrollToBottom(true)
 
   const assistantMsg = {
     role: 'assistant',
     thinking: '',
     content: '',
     streaming: true,
-    thinkingCollapsed: false,
+    thinkingCollapsed: true,
     toolCalls: [],
     downloads: [],
     turnNum: null,
@@ -168,7 +208,7 @@ async function sendMessage() {
   }
   convStore.messages.push(assistantMsg)
   const idx = convStore.messages.length - 1
-  scrollToBottom()
+  scrollToBottom(true)
 
   isStreaming.value = true
   abortController = new AbortController()
@@ -264,7 +304,8 @@ async function sendMessage() {
     }
     isStreaming.value = false
     abortController = null
-    scrollToBottom()
+    showScrollBtn.value = false
+    scrollToBottom(true)
   }
 }
 
