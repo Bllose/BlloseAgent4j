@@ -43,6 +43,12 @@
             </a>
           </div>
           <n-spin v-if="msg.streaming" size="small" style="margin-left: 8px; margin-top: 4px;" />
+          <FeedbackButtons
+            v-if="!msg.streaming && msg.turnNum && convStore.currentChatId"
+            :chat-id="convStore.currentChatId"
+            :turn-num="msg.turnNum"
+            :readonly="msg.isHistory || false"
+          />
         </div>
       </div>
       <div v-if="convStore.messages.length === 0" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 48px;">
@@ -105,6 +111,7 @@ import { useMessage } from 'naive-ui'
 import { marked } from 'marked'
 import { streamChat, invokeChat } from '../api'
 import { useConversationStore } from '../stores/conversation'
+import FeedbackButtons from '../components/FeedbackButtons.vue'
 
 marked.use({
   renderer: {
@@ -156,6 +163,8 @@ async function sendMessage() {
     thinkingCollapsed: false,
     toolCalls: [],
     downloads: [],
+    turnNum: null,
+    isHistory: false,
   }
   convStore.messages.push(assistantMsg)
   const idx = convStore.messages.length - 1
@@ -170,6 +179,8 @@ async function sendMessage() {
     if (ep.mode === 'invoke') {
       const data = await invokeChat(text, ep.value, convStore.currentChatId)
       convStore.messages[idx].content = data.content || ''
+      convStore.messages[idx].streaming = false
+      convStore.messages[idx].turnNum = data.turnNum ? parseInt(data.turnNum) : null
       if (data.chatId) convStore.setChatId(data.chatId)
     } else {
       const response = await streamChat(text, ep.value, convStore.currentChatId)
@@ -212,6 +223,7 @@ async function sendMessage() {
             } catch (_) { /* 裸字符串 */ }
             const cur = convStore.messages[idx]
             if (eventName === 'chatId') {
+              console.log('[ChatView] SSE chatId:', payload, 'type:', typeof payload)
               convStore.setChatId(payload)
             } else if (eventName === 'thinking') {
               cur.thinking += payload
@@ -228,6 +240,11 @@ async function sendMessage() {
               cur.streaming = false
               cur.thinking = cleanupThinking(cur.thinking)
               cur.content = normalizeContent(cur.content)
+              console.log('[ChatView] SSE done payload:', payload, 'turnNum:', payload?.turnNum, 'currentChatId:', convStore.currentChatId)
+              if (payload && payload.turnNum) {
+                cur.turnNum = payload.turnNum
+                console.log('[ChatView] set turnNum to:', cur.turnNum)
+              }
             }
           }
         }

@@ -3,9 +3,14 @@ package com.bllose.agent.repository;
 import com.bllose.agent.model.ChatMessage;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
+import java.sql.PreparedStatement;
+import java.sql.Statement;
 import java.util.List;
+import java.util.Objects;
 
 @Repository
 public class ChatMessageRepository {
@@ -26,11 +31,20 @@ public class ChatMessageRepository {
         rs.getTimestamp("created_at").toLocalDateTime()
     );
 
-    public void save(ChatMessage msg) {
-        jdbc.update(
-            "INSERT INTO chat_messages (chat_id, turn_num, type, thinking, message) VALUES (?, ?, ?, ?, ?)",
-            msg.getChatId(), msg.getTurnNum(), msg.getType(), msg.getThinking(), msg.getMessage()
-        );
+    public long save(ChatMessage msg) {
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbc.update(con -> {
+            PreparedStatement ps = con.prepareStatement(
+                "INSERT INTO chat_messages (chat_id, turn_num, type, thinking, message) VALUES (?, ?, ?, ?, ?)",
+                Statement.RETURN_GENERATED_KEYS);
+            ps.setString(1, msg.getChatId());
+            ps.setInt(2, msg.getTurnNum());
+            ps.setString(3, msg.getType());
+            ps.setString(4, msg.getThinking());
+            ps.setString(5, msg.getMessage());
+            return ps;
+        }, keyHolder);
+        return Objects.requireNonNull(keyHolder.getKey()).longValue();
     }
 
     public List<ChatMessage> findByChatId(String chatId, int lastNTurns) {
